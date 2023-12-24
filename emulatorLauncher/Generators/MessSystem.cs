@@ -570,13 +570,6 @@ namespace EmulatorLauncher
             if (File.Exists(inipath))
                 File.Delete(inipath);
 
-            // Additional arguments for libretro:mame
-            if (!standalone)
-            {
-               if (SystemConfig.isOptSet("libretro_mame_rotate") && !string.IsNullOrEmpty(SystemConfig["libretro_mame_rotate"]) && SystemConfig["libretro_mame_rotate"] != "off")
-                   commandArray.Add("-" + SystemConfig["libretro_mame_rotate"]);
-            }
-
             // rompath
             commandArray.Add("-rompath");
             if (!string.IsNullOrEmpty(AppConfig["bios"]) && Directory.Exists(AppConfig.GetFullPath("bios")))
@@ -589,6 +582,14 @@ namespace EmulatorLauncher
 
             else
                 commandArray.Add(Path.GetDirectoryName(rom));
+
+            // Cheats
+            string cheatPath = Path.Combine(AppConfig.GetFullPath("cheats"), "mame");
+            if (!string.IsNullOrEmpty(cheatPath) && Directory.Exists(cheatPath))
+            {
+                commandArray.Add("-cheatpath");
+                commandArray.Add(cheatPath);
+            }
 
             List<string> pluginList = new List<string>();
             if (SystemConfig.isOptSet("cheats_enable") && SystemConfig.getOptBoolean("cheats_enable"))

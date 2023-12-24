@@ -242,6 +242,13 @@ namespace EmulatorLauncher
             else
                 userProfile.RequiresAdmin = requiresadmin;
 
+            // APM3ID - for online gaming
+            var apm3id = userProfile.ConfigValues.FirstOrDefault(c => c.FieldName == "APM3ID");
+            if (apm3id != null && SystemConfig.isOptSet("apm3id") && !string.IsNullOrEmpty(SystemConfig["apm3id"]))
+                apm3id.FieldValue = SystemConfig["apm3id"].ToUpperInvariant();
+            else if (apm3id != null)
+                apm3id.FieldValue = string.Empty;
+
             ConfigureControllers(userProfile);
 
             JoystickHelper.SerializeGameProfile(userProfile, userProfilePath);
@@ -251,12 +258,18 @@ namespace EmulatorLauncher
             _exename = Path.GetFileNameWithoutExtension(userProfile.GamePath);
             _gameProfile = userProfile;
 
+            List<string> commandArray = new List<string>();
+            commandArray.Add("--profile=" + profileName);
+            if (!SystemConfig.isOptSet("tp_minimize") || SystemConfig.getOptBoolean("tp_minimize"))
+                commandArray.Add("--startMinimized");
+            string args = string.Join(" ", commandArray);
+
             return new ProcessStartInfo()
             {
                 FileName = exe,
                 Verb = userProfile.RequiresAdmin ? "runas" : null,
                 WorkingDirectory = path,
-                Arguments = "--profile=" + profileName // + " --startMinimized",
+                Arguments = args,
             };
         }
 
@@ -373,6 +386,20 @@ namespace EmulatorLauncher
                 var profile = JoystickHelper.DeSerializeGameProfile(file, false);
                 if (profile == null)
                     continue;
+
+                if (string.IsNullOrEmpty(profile.GameName))
+                {
+                    try
+                    {
+                        string json = Path.Combine(path, "Metadata", Path.GetFileNameWithoutExtension(file) + ".json");
+                        if (File.Exists(json))
+                        {
+                            var js = DynamicJson.Load(json);
+                            profile.GameName = js["game_name"];
+                        }
+                    }
+                    catch { }
+                }
 
                 if (gameName.Equals(profile.GameName, StringComparison.InvariantCultureIgnoreCase))
                     return profile;

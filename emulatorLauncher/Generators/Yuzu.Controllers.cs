@@ -45,6 +45,18 @@ namespace EmulatorLauncher
 
             UpdateSdlControllersWithHints(ini);
 
+            // Cleanup control part first
+            for (int i=0; i<10; i++)
+            {
+                var controlLines = ini.EnumerateKeys("Controls").Where(k => k.StartsWith("player_" + i)).ToList();
+
+                if (controlLines.Count >0 && controlLines != null)
+                {
+                    foreach (var line in controlLines)
+                        ini.Remove("Controls", line);
+                }
+            }
+
             // Hotkeys
             WriteShortcuts(ini);
 
@@ -94,7 +106,7 @@ namespace EmulatorLauncher
 
             string player = "player_" + (controller.PlayerIndex - 1) + "_";
 
-            // player_0_type=1 Pro controller
+            // player_0_type=0 Pro controller
             // player_0_type=1 Dual joycon
             // player_0_type=2 Left joycon
             // player_0_type=3 Right joycon
@@ -125,6 +137,8 @@ namespace EmulatorLauncher
             ini.WriteValue("Controls", player + "right_vibration_device" + "\\default", "true");
             ini.WriteValue("Controls", "enable_accurate_vibrations" + "\\default", "false");
             ini.WriteValue("Controls", "enable_accurate_vibrations", "true");
+            ini.Remove("Controls", player + "left_vibration_device");
+            ini.Remove("Controls", player + "right_vibration_device");
 
             //vibration strength for XInput = 70
             if (controller.IsXInputDevice)
@@ -227,6 +241,14 @@ namespace EmulatorLauncher
             ini.WriteValue("Controls", player + "button_sl", "[empty]");
             ini.WriteValue("Controls", player + "button_sr" + "\\default", "false");
             ini.WriteValue("Controls", player + "button_sr", "[empty]");
+            ini.WriteValue("Controls", player + "button_slleft" + "\\default", "false");
+            ini.WriteValue("Controls", player + "button_slleft", "[empty]");
+            ini.WriteValue("Controls", player + "button_srleft" + "\\default", "false");
+            ini.WriteValue("Controls", player + "button_srleft", "[empty]");
+            ini.WriteValue("Controls", player + "button_slright" + "\\default", "false");
+            ini.WriteValue("Controls", player + "button_slright", "[empty]");
+            ini.WriteValue("Controls", player + "button_srright" + "\\default", "false");
+            ini.WriteValue("Controls", player + "button_srright", "[empty]");
             ini.WriteValue("Controls", player + "button_home" + "\\default", "false");
             ini.WriteValue("Controls", player + "button_home", "[empty]");
             ini.WriteValue("Controls", player + "button_screenshot" + "\\default", "false");
@@ -376,6 +398,14 @@ namespace EmulatorLauncher
             ini.WriteValue("Controls", player + "button_sl", "\"" + "engine:keyboard,code:81,toggle:0" + "\"");
             ini.WriteValue("Controls", player + "button_sr\\default", "true");
             ini.WriteValue("Controls", player + "button_sr", "\"" + "engine:keyboard,code:69,toggle:0" + "\"");
+            ini.WriteValue("Controls", player + "button_slleft\\default", "true");
+            ini.WriteValue("Controls", player + "button_slleft", "\"" + "engine:keyboard,code:81,toggle:0" + "\"");
+            ini.WriteValue("Controls", player + "button_srleft\\default", "true");
+            ini.WriteValue("Controls", player + "button_srleft", "\"" + "engine:keyboard,code:69,toggle:0" + "\"");
+            ini.WriteValue("Controls", player + "button_slright\\default", "true");
+            ini.WriteValue("Controls", player + "button_slright", "\"" + "engine:keyboard,code:81,toggle:0" + "\"");
+            ini.WriteValue("Controls", player + "button_srright\\default", "true");
+            ini.WriteValue("Controls", player + "button_srright", "\"" + "engine:keyboard,code:69,toggle:0" + "\"");
             ini.WriteValue("Controls", player + "button_home\\default", "true");
             ini.WriteValue("Controls", player + "button_home", "\"" + "engine:keyboard,code:0,toggle:0" + "\"");
             ini.WriteValue("Controls", player + "button_screenshot\\default", "true");

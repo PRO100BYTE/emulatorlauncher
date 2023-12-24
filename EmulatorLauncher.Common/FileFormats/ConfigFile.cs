@@ -131,11 +131,16 @@ namespace EmulatorLauncher.Common.FileFormats
                     if (Directory.Exists(Path.GetFullPath(Path.Combine(LocalPath, "..", key))))
                         return Path.Combine(Path.GetFullPath(Path.Combine(LocalPath, "..", key)));
                 }
+                else if (key == "retrobat")
+                {
+                    if (Directory.Exists(Path.GetFullPath(Path.Combine(LocalPath))))
+                        return Path.Combine(Path.GetFullPath(Path.Combine(LocalPath, "..")));
+                }
                 else
-                {                  
+                {
                     if (Directory.Exists(Path.GetFullPath(Path.Combine(LocalPath, key))))
-                        return Path.Combine(Path.GetFullPath(Path.Combine(LocalPath, key))); 
-                    
+                        return Path.Combine(Path.GetFullPath(Path.Combine(LocalPath, key)));
+
                     if (Directory.Exists(Path.GetFullPath(Path.Combine(LocalPath, "..", "emulators", key))))
                         return Path.Combine(Path.GetFullPath(Path.Combine(LocalPath, "..", "emulators", key)));
 

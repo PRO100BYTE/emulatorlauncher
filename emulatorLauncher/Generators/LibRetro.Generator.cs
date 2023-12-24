@@ -293,6 +293,7 @@ namespace EmulatorLauncher.Libretro
             BindFeature(retroarchConfig, "audio_volume", "audio_volume", "0.000000");
             BindFeature(retroarchConfig, "audio_mixer_volume", "audio_mixer_volume", "0.000000");
             BindFeature(retroarchConfig, "audio_dsp_plugin", "audio_dsp_plugin", "");
+            BindBoolFeature(retroarchConfig, "audio_sync", "audio_sync", "false", "true");
 
             // Misc
             BindBoolFeature(retroarchConfig, "video_smooth", "smooth", "true", "false");
@@ -660,7 +661,7 @@ namespace EmulatorLauncher.Libretro
                 retroarchConfig["cheevos_enable"] = "true";
                 retroarchConfig["cheevos_username"] = SystemConfig["retroachievements.username"];
                 retroarchConfig["cheevos_password"] = SystemConfig["retroachievements.password"];
-                retroarchConfig["cheevos_hardcore_mode_enable"] = SystemConfig["retroachievements.hardcore"] == "true" ? "true" : "false";
+                retroarchConfig["cheevos_hardcore_mode_enable"] = SystemConfig["retroachievements.hardcore"] == "true" && _stateFileManager == null ? "true" : "false";
                 retroarchConfig["cheevos_leaderboards_enable"] = SystemConfig["retroachievements.leaderboards"] == "true" ? "true" : "false";
                 retroarchConfig["cheevos_verbose_enable"] = SystemConfig["retroachievements.verbose"] == "true" ? "true" : "false";
                 retroarchConfig["cheevos_auto_screenshot"] = SystemConfig["retroachievements.screenshot"] == "true" ? "true" : "false";

@@ -10,6 +10,7 @@ using System.Management;
 using EmulatorLauncher.Common.FileFormats;
 using EmulatorLauncher.Common.Joysticks;
 using EmulatorLauncher.Common.EmulationStation;
+using System.Windows.Input;
 
 namespace EmulatorLauncher
 {
@@ -531,8 +532,7 @@ namespace EmulatorLauncher
 
         private void SetupGunQT(IniFile pcsx2ini, string path)
         {
-            bool gun = SystemConfig["pcsx2_gun"] == "USB1" || SystemConfig["pcsx2_gun"] == "USB2";
-            if (!gun)
+            if (!SystemConfig.getOptBoolean("use_guns"))
                 return;
 
             Controller ctrl = null;
@@ -547,7 +547,10 @@ namespace EmulatorLauncher
                 return;
 
             // Initialize USB sections
-            string usbSection = SystemConfig["pcsx2_gun"].ToUpperInvariant();
+            string usbSection = "USB1";
+            if (SystemConfig.isOptSet("pcsx2_gun") && SystemConfig["pcsx2_gun"] == "USB2")
+                usbSection = "USB2";
+            
             pcsx2ini.ClearSection("USB1");
             pcsx2ini.ClearSection("USB2");
 
@@ -556,20 +559,17 @@ namespace EmulatorLauncher
 
             string techPadNumber = null;
             string tech = "";
-            bool gamepad = false;
             bool guninvert = SystemConfig.isOptSet("gun_invert") && SystemConfig.getOptBoolean("gun_invert");
             
             if (!ctrl.IsKeyboard && ctrl.IsXInputDevice && !_forceSDL)
             {
                 techPadNumber = "XInput-" + ctrl.XInput.DeviceIndex + "/";
                 tech = "XInput";
-                gamepad = true;
             }
             else if (!ctrl.IsKeyboard)
             {
                 techPadNumber = "SDL-" + (ctrl.SdlController == null ? ctrl.DeviceIndex : ctrl.SdlController.Index) + "/";
                 tech = "SDL";
-                gamepad = true;
             }
             else
                 techPadNumber = "Keyboard/";
@@ -577,7 +577,11 @@ namespace EmulatorLauncher
             // Configure gun for player 1 if option is set in es_features
             pcsx2ini.WriteValue(usbSection, "Type", "guncon2");
             pcsx2ini.WriteValue(usbSection, "guncon2_Trigger", guninvert ? "Pointer-0/RightButton" : "Pointer-0/LeftButton");
-            pcsx2ini.WriteValue(usbSection, "guncon2_ShootOffscreen", guninvert ? "Pointer-0/LeftButton" : "Pointer-0/RightButton");
+            
+            if (SystemConfig["pcsx2_gunmapping"] == "keyboard_middle")
+                pcsx2ini.WriteValue(usbSection, "guncon2_ShootOffscreen", "Keyboard/1");
+            else
+                pcsx2ini.WriteValue(usbSection, "guncon2_ShootOffscreen", guninvert ? "Pointer-0/LeftButton" : "Pointer-0/RightButton");
             
             if (SystemConfig.isOptSet("gun_calibrate") && SystemConfig["gun_calibrate"] == "trigger")
                 pcsx2ini.WriteValue(usbSection, "guncon2_Recalibrate", guninvert ? "Pointer-0/RightButton" : "Pointer-0/LeftButton");
@@ -606,6 +610,7 @@ namespace EmulatorLauncher
                 pcsx2ini.WriteValue(usbSection, "guncon2_Down", "Keyboard/Down");
                 pcsx2ini.WriteValue(usbSection, "guncon2_Left", "Keyboard/Left");
                 pcsx2ini.WriteValue(usbSection, "guncon2_Right", "Keyboard/Right");
+                
                 if (SystemConfig.isOptSet("pcsx2_gunmapping") && SystemConfig["pcsx2_gunmapping"] == "keyboard_volume")
                 {
                     pcsx2ini.WriteValue(usbSection, "guncon2_A", "Keyboard/VolumeUp");
@@ -619,8 +624,12 @@ namespace EmulatorLauncher
 
                 pcsx2ini.WriteValue(usbSection, "guncon2_C", "Keyboard/3");
                 pcsx2ini.WriteValue(usbSection, "guncon2_Select", "Keyboard/Backspace");
+
                 if (SystemConfig.isOptSet("pcsx2_gunmapping") && SystemConfig["pcsx2_gunmapping"] == "keyboard_middle")
+                {
+                    pcsx2ini.WriteValue(usbSection, "guncon2_A", guninvert ? "Pointer-0/LeftButton" : "Pointer-0/RightButton");
                     pcsx2ini.WriteValue(usbSection, "guncon2_Start", "Pointer-0/MiddleButton");
+                }
                 else
                     pcsx2ini.WriteValue(usbSection, "guncon2_Start", "Keyboard/Return");
             }

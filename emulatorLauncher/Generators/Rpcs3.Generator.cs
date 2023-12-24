@@ -57,33 +57,36 @@ namespace EmulatorLauncher
             bool fullscreen = !IsEmulationStationWindowed() || SystemConfig.getOptBoolean("forcefullscreen");
 
             // Configuration
-            SetupGuiConfiguration(path);
-            SetupConfiguration(path, fullscreen);
-            CreateControllerConfiguration(path);
-
-            // Check if firmware is installed in emulator, if not and if firmware is available in \bios path then install it instead of running the game
-            string firmware = Path.Combine(path, "dev_flash", "vsh", "etc", "version.txt");
-            string biosPath = AppConfig.GetFullPath("bios");
-            string biosPs3 = Path.Combine(biosPath, "PS3UPDAT.PUP");
-
-            if (!File.Exists(firmware) && !File.Exists(biosPs3))
-                throw new ApplicationException("PS3 firmware is not installed in rpcs3 emulator, either place it in \\bios folder, or launch the emulator and install the firware.");
-            
-            else if (!File.Exists(firmware) && File.Exists(biosPs3))
+            if (!SystemConfig.getOptBoolean("disableautoconfig"))
             {
-                SimpleLogger.Instance.Info("[INFO] Firmware not installed, launching RPCS3 with 'installfirmware' command.");
-                List<string> commandArrayfirmware = new List<string>();
-                commandArrayfirmware.Add("--installfw");
-                commandArrayfirmware.Add(biosPs3);
-                string argsfirmware = string.Join(" ", commandArrayfirmware);
-                return new ProcessStartInfo()
+                SetupGuiConfiguration(path);
+                SetupConfiguration(path, fullscreen);
+                CreateControllerConfiguration(path);
+
+                // Check if firmware is installed in emulator, if not and if firmware is available in \bios path then install it instead of running the game
+                string firmware = Path.Combine(path, "dev_flash", "vsh", "etc", "version.txt");
+                string biosPath = AppConfig.GetFullPath("bios");
+                string biosPs3 = Path.Combine(biosPath, "PS3UPDAT.PUP");
+
+                if (!File.Exists(firmware) && !File.Exists(biosPs3))
+                    throw new ApplicationException("PS3 firmware is not installed in rpcs3 emulator, either place it in \\bios folder, or launch the emulator and install the firware.");
+            
+                else if (!File.Exists(firmware) && File.Exists(biosPs3))
                 {
-                    FileName = exe,
-                    WorkingDirectory = path,
-                    Arguments = argsfirmware,
-                };
+                    SimpleLogger.Instance.Info("[INFO] Firmware not installed, launching RPCS3 with 'installfirmware' command.");
+                    List<string> commandArrayfirmware = new List<string>();
+                    commandArrayfirmware.Add("--installfw");
+                    commandArrayfirmware.Add(biosPs3);
+                    string argsfirmware = string.Join(" ", commandArrayfirmware);
+                    return new ProcessStartInfo()
+                    {
+                        FileName = exe,
+                        WorkingDirectory = path,
+                        Arguments = argsfirmware,
+                    };
+                }
             }
-          
+
             return new ProcessStartInfo()
             {
                 FileName = exe,
@@ -165,7 +168,8 @@ namespace EmulatorLauncher
             // Handle Video part of yml file
             var video = yml.GetOrCreateContainer("Video");
             BindFeature(video, "Renderer", "gfxbackend", "Vulkan");
-            BindFeature(video, "Resolution", "rpcs3_internal_resolution", "1280x720");
+            video["Resolution"] = "1280x720";
+            BindFeature(video, "Resolution Scale", "rpcs3_internal_resolution", "100");
             BindFeature(video, "Aspect ratio", "ratio", "16:9");
             BindFeature(video, "Frame limit", "framelimit", "Auto");
             BindFeature(video, "MSAA", "msaa", "Auto");
@@ -179,7 +183,8 @@ namespace EmulatorLauncher
             BindFeature(video, "Strict Rendering Mode", "strict_rendering", "false");
             BindFeature(video, "Disable Vertex Cache", "disablevertex", "false");
             BindFeature(video, "Multithreaded RSX", "multithreadedrsx", "false");
-            
+            BindFeature(video, "Output Scaling Mode", "rpcs3_scaling_filter", "Nearest");
+
             if (SystemConfig.isOptSet("enable3d") && !string.IsNullOrEmpty(SystemConfig["enable3d"]))
             {
                 switch(SystemConfig["enable3d"])
