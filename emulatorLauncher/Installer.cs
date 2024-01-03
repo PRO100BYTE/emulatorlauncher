@@ -130,9 +130,9 @@ namespace EmulatorLauncher
                 return string.Empty;
 
             if (installerUrl.EndsWith("/"))
-                installerUrl = installerUrl + "/store/emulators/" + fileName;
+                installerUrl = installerUrl + "store/emulators/" + fileName;
             else
-                installerUrl = installerUrl + "/" + "/store/emulators/" + fileName;
+                installerUrl = installerUrl + "/" + "store/emulators/" + fileName;
 
             return installerUrl;
         }
