@@ -132,7 +132,7 @@
             // 
             // pictureBox1
             // 
-            this.pictureBox1.Image = global::EmulatorLauncher.Properties.Resources.retrobat;
+            this.pictureBox1.Image = global::EmulatorLauncher.Properties.Resources.projectarcade;
             this.pictureBox1.Location = new System.Drawing.Point(14, 13);
             this.pictureBox1.Name = "pictureBox1";
             this.pictureBox1.Size = new System.Drawing.Size(204, 85);
