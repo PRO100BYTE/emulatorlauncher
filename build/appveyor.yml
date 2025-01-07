@@ -11,39 +11,40 @@ build:
   project: batocera-ports.sln
   verbosity: minimal
 after_build:
-- copy emulatorLauncher\bin\Release\emulatorLauncher.exe .
-- 7z a emulatorlauncher.zip emulatorLauncher.exe
-- copy EmulatorLauncher.Common\bin\Release\EmulatorLauncher.Common.dll .
-- 7z a emulatorlauncher.zip EmulatorLauncher.Common.dll
-- copy batocera-retroachievements-info\bin\Release\batocera-retroachievements-info.exe .
-- 7z a emulatorlauncher.zip batocera-retroachievements-info.exe
-- copy batocera-systems\bin\Release\batocera-systems.exe .
-- 7z a emulatorlauncher.zip batocera-systems.exe
-- copy batocera-store\bin\Release\batocera-store.exe .
-- 7z a emulatorlauncher.zip batocera-store.exe
-- copy es-checkversion\bin\Release\es-checkversion.exe .\es-checkversion-test.exe
-- 7z a emulatorlauncher.zip es-checkversion-test.exe
-- copy es-update\bin\Release\es-update.exe .\es-update-test.exe
-- 7z a emulatorlauncher.zip es-update-test.exe
-- copy mount\bin\Release\mount.exe .
-- 7z a emulatorlauncher.zip mount.exe
-- 7z a emulatorlauncher.zip 7za.exe
-- 7z a emulatorlauncher.zip 7za.dll
-- 7z a emulatorlauncher.zip 7zxa.dll
-- 7z a emulatorlauncher.zip Newtonsoft.Json.dll
-- 7z a emulatorlauncher.zip unzip.exe
-- 7z a emulatorlauncher.zip unzip32.dll
-- 7z a emulatorlauncher.zip pdftoppm.exe
-- 7z a emulatorlauncher.zip pdfinfo.exe
-- 7z a emulatorlauncher.zip rdsquashfs.exe
-- 7z a emulatorlauncher.zip liblzma.dll
-- 7z a emulatorlauncher.zip liblzo2-2.dll
-- 7z a emulatorlauncher.zip libsquashfs.dll
-- 7z a emulatorlauncher.zip libzstd.dll
-- 7z a emulatorlauncher.zip xbox-iso-vfs.exe
-- 7z a emulatorlauncher.zip 7z.exe
-- 7z a emulatorlauncher.zip 7z.dll
-- 7z a emulatorlauncher.zip .emulationstation\es_features.cfg
+- cmd: >-
+  - copy emulatorLauncher\bin\Release\emulatorLauncher.exe .
+  - 7z a emulatorlauncher.zip emulatorLauncher.exe
+  - copy EmulatorLauncher.Common\bin\Release\EmulatorLauncher.Common.dll .
+  - 7z a emulatorlauncher.zip EmulatorLauncher.Common.dll
+  - copy batocera-retroachievements-info\bin\Release\batocera-retroachievements-info.exe .
+  - 7z a emulatorlauncher.zip batocera-retroachievements-info.exe
+  - copy batocera-systems\bin\Release\batocera-systems.exe .
+  - 7z a emulatorlauncher.zip batocera-systems.exe
+  - copy batocera-store\bin\Release\batocera-store.exe .
+  - 7z a emulatorlauncher.zip batocera-store.exe
+  - copy es-checkversion\bin\Release\es-checkversion.exe .\es-checkversion-test.exe
+  - 7z a emulatorlauncher.zip es-checkversion-test.exe
+  - copy es-update\bin\Release\es-update.exe .\es-update-test.exe
+  - 7z a emulatorlauncher.zip es-update-test.exe
+  - copy mount\bin\Release\mount.exe .
+  - 7z a emulatorlauncher.zip mount.exe
+  - 7z a emulatorlauncher.zip 7za.exe
+  - 7z a emulatorlauncher.zip 7za.dll
+  - 7z a emulatorlauncher.zip 7zxa.dll
+  - 7z a emulatorlauncher.zip Newtonsoft.Json.dll
+  - 7z a emulatorlauncher.zip unzip.exe
+  - 7z a emulatorlauncher.zip unzip32.dll
+  - 7z a emulatorlauncher.zip pdftoppm.exe
+  - 7z a emulatorlauncher.zip pdfinfo.exe
+  - 7z a emulatorlauncher.zip rdsquashfs.exe
+  - 7z a emulatorlauncher.zip liblzma.dll
+  - 7z a emulatorlauncher.zip liblzo2-2.dll
+  - 7z a emulatorlauncher.zip libsquashfs.dll
+  - 7z a emulatorlauncher.zip libzstd.dll
+  - 7z a emulatorlauncher.zip xbox-iso-vfs.exe
+  - 7z a emulatorlauncher.zip 7z.exe
+  - 7z a emulatorlauncher.zip 7z.dll
+  - 7z a emulatorlauncher.zip .emulationstation\es_features.cfg
 artifacts:
 - path: emulatorlauncher.zip
 deploy:
