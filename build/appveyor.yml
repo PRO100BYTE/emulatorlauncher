@@ -12,21 +12,21 @@ build:
   verbosity: minimal
 after_build:
 - cmd: >-
-  copy emulatorLauncher\bin\Release\emulatorLauncher.exe .
+  copy EmulationStation\emulatorLauncher.exe .
   7z a emulatorlauncher.zip emulatorLauncher.exe
-  copy EmulatorLauncher.Common\bin\Release\EmulatorLauncher.Common.dll .
+  copy EmulationStation\EmulatorLauncher.Common.dll .
   7z a emulatorlauncher.zip EmulatorLauncher.Common.dll
-  copy batocera-retroachievements-info\bin\Release\batocera-retroachievements-info.exe .
+  copy EmulationStation\batocera-retroachievements-info.exe .
   7z a emulatorlauncher.zip batocera-retroachievements-info.exe
-  copy batocera-systems\bin\Release\batocera-systems.exe .
+  copy EmulationStation\batocera-systems.exe .
   7z a emulatorlauncher.zip batocera-systems.exe
-  copy batocera-store\bin\Release\batocera-store.exe .
+  copy EmulationStation\batocera-store.exe .
   7z a emulatorlauncher.zip batocera-store.exe
-  copy es-checkversion\bin\Release\es-checkversion.exe .\es-checkversion-test.exe
+  copy EmulationStation\es-checkversion.exe .\es-checkversion-test.exe
   7z a emulatorlauncher.zip es-checkversion-test.exe
-  copy es-update\bin\Release\es-update.exe .\es-update-test.exe
+  copy EmulationStation\es-update.exe .\es-update-test.exe
   7z a emulatorlauncher.zip es-update-test.exe
-  copy mount\bin\Release\mount.exe .
+  copy EmulationStation\mount.exe .
   7z a emulatorlauncher.zip mount.exe
   7z a emulatorlauncher.zip 7za.exe
   7z a emulatorlauncher.zip 7za.dll
@@ -44,7 +44,7 @@ after_build:
   7z a emulatorlauncher.zip xbox-iso-vfs.exe
   7z a emulatorlauncher.zip 7z.exe
   7z a emulatorlauncher.zip 7z.dll
-  7z a emulatorlauncher.zip .emulationstation\es_features.cfg
+  7z a emulatorlauncher.zip EmulationStation\.emulationstation\es_features.cfg
 artifacts:
 - path: emulatorlauncher.zip
 deploy:
