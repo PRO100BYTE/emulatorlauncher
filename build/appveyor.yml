@@ -1,0 +1,31 @@
+version: pa{build}.{branch}
+skip_tags: true
+build:
+  project: batocera-ports.sln
+  verbosity: minimal
+after_build:
+- cmd: >-
+    del /s /q "C:\projects\EmulationStation\*.config"
+
+    del /s /q "C:\projects\EmulationStation\*.pdb"
+
+    if exist "C:\projects\EmulationStation\ru" rd /s /q "C:\projects\EmulationStation\ru"
+
+    if exist "C:\projects\EmulationStation\es" rd /s /q "C:\projects\EmulationStation\es"
+
+    if exist "C:\projects\EmulationStation\fr" rd /s /q "C:\projects\EmulationStation\fr"
+
+    7z a -tzip emulatorlauncher.zip C:\projects\EmulationStation\*
+artifacts:
+- path: emulatorlauncher.zip
+deploy:
+- provider: GitHub
+  tag: emulatorlauncher-$(APPVEYOR_BUILD_VERSION)
+  release: emulatorLauncher $(APPVEYOR_BUILD_VERSION)
+  description: emulatorLauncher for ProjectArcade | This release was automatically compiled and published by the AppVeyor service.
+  auth_token:
+    secure: aShADtUc5h0xntghttL2paIN46wO9ftml5lCyLJVIUtNLqQos33JPmG7BV/S5D3WoSLthDrlucqUxvYxriz4ZaKoLncf0Zp5YsNqkiL+EWlNcm8Tvub5dm7F1mVo46v1
+  repository: PRO100BYTE/emulatorlauncher
+  artifact: emulatorlauncher.zip
+  prerelease: false
+  force_update: true
