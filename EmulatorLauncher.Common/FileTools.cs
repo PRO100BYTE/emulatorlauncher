@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Diagnostics;
@@ -181,7 +180,7 @@ namespace EmulatorLauncher.Common
             return false;
         }
 
-        public static void CopyDirectory(string sourceDir, string destinationDir, bool recursive)
+        public static void CopyDirectory(string sourceDir, string destinationDir, bool recursive, bool overwrite = false)
         {
             // Get information about the source directory
             var dir = new DirectoryInfo(sourceDir);
@@ -200,7 +199,7 @@ namespace EmulatorLauncher.Common
             foreach (FileInfo file in dir.GetFiles())
             {
                 string targetFilePath = Path.Combine(destinationDir, file.Name);
-                file.CopyTo(targetFilePath);
+                file.CopyTo(targetFilePath, overwrite);
             }
 
             // If recursive and copying subdirectories, recursively call this method
@@ -209,7 +208,7 @@ namespace EmulatorLauncher.Common
                 foreach (DirectoryInfo subDir in dirs)
                 {
                     string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-                    CopyDirectory(subDir.FullName, newDestinationDir, true);
+                    CopyDirectory(subDir.FullName, newDestinationDir, true, overwrite);
                 }
             }
         }
@@ -266,9 +265,9 @@ namespace EmulatorLauncher.Common
         [DllImport("shell32.dll")]
         public static extern bool SHGetSpecialFolderPath(IntPtr hwndOwner, [Out]StringBuilder lpszPath, int nFolder, bool fCreate);
 
-        public static string GetSystemDirectory()
+        public static string GetSystemDirectory(RegistryViewEx view = RegistryViewEx.Default)
         {
-            if (Environment.Is64BitOperatingSystem)
+            if (view == RegistryViewEx.Default && Environment.Is64BitOperatingSystem || view == RegistryViewEx.Registry32)
             {
                 StringBuilder path = new StringBuilder(260);
                 SHGetSpecialFolderPath(IntPtr.Zero, path, 0x0029, false); // CSIDL_SYSTEMX86
@@ -322,16 +321,19 @@ namespace EmulatorLauncher.Common
                         string firstPart = link.Substring(0, begin);
                         string secondPart = link.Substring(end);
 
+                        SimpleLogger.Instance.Info("[INFO] link target found : " + firstPart + secondPart);
                         return firstPart + secondPart;
                     }
                     else
                     {
+                        SimpleLogger.Instance.Info("[INFO] link target found : " + link);
                         return link;
                     }
                 }
             }
             catch
             {
+                SimpleLogger.Instance.Info("[INFO] Impossible to find link: returning empty");
                 return "";
             }
         }

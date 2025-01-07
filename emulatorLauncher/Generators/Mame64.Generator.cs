@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Diagnostics;
-using EmulatorLauncher.PadToKeyboard;
 using EmulatorLauncher.Common;
-using EmulatorLauncher.Common.EmulationStation;
 
 namespace EmulatorLauncher
 {
@@ -16,7 +14,7 @@ namespace EmulatorLauncher
             DependsOnDesktopResolution = true;
         }
 
-        private bool _multigun;
+        private bool _multigun = false;
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
@@ -44,23 +42,22 @@ namespace EmulatorLauncher
             if (!File.Exists(exe))
                 return null;
 
-            _exeName = Path.GetFileNameWithoutExtension(exe);
-
-            ConfigureBezels(Path.Combine(AppConfig.GetFullPath("bios"), "mame", "artwork"), system, rom, resolution);
+            ConfigureBezels(Path.Combine(AppConfig.GetFullPath("bios"), "mame", "artwork"), system, rom, resolution, emulator);
             ConfigureUIini(Path.Combine(AppConfig.GetFullPath("bios"), "mame", "ini"));
             ConfigureMameini(Path.Combine(AppConfig.GetFullPath("bios"), "mame", "ini"));
 
-            string args = null;
+            string args;
 
             MessSystem messMode = MessSystem.GetMessSystem(system, core);
             if (messMode == null || messMode.Name == "mame" || messMode.Name == "hbmame")
             {
-                List<string> commandArray = new List<string>();
+                List<string> commandArray = new List<string>
+                {
+                    "-skip_gameinfo",
 
-                commandArray.Add("-skip_gameinfo");
-
-                // rompath
-                commandArray.Add("-rompath");
+                    // rompath
+                    "-rompath"
+                };
                 if (!string.IsNullOrEmpty(AppConfig["bios"]) && Directory.Exists(AppConfig["bios"]))
                     commandArray.Add(AppConfig.GetFullPath("bios") + ";" + Path.GetDirectoryName(rom));
                 else
@@ -110,16 +107,6 @@ namespace EmulatorLauncher
                     }
                 }
 
-                // NVRAM directory
-                string nvramPath = Path.Combine(AppConfig.GetFullPath("saves"), "mame", "nvram");
-                if (!Directory.Exists(nvramPath)) try { Directory.CreateDirectory(nvramPath); }
-                    catch { }
-                if (!string.IsNullOrEmpty(nvramPath) && Directory.Exists(nvramPath))
-                {
-                    commandArray.Add("-nvram_directory");
-                    commandArray.Add(nvramPath);
-                }
-
                 // cfg directory
                 string cfgPath = hbmame ? Path.Combine(AppConfig.GetFullPath("bios"), "hbmame", "cfg") : Path.Combine(AppConfig.GetFullPath("bios"), "mame", "cfg");
                 if (!Directory.Exists(cfgPath)) try { Directory.CreateDirectory(cfgPath); }
@@ -130,10 +117,11 @@ namespace EmulatorLauncher
                     commandArray.Add(cfgPath);
                 }
 
-                // Delete default.cfg files if they exist
+                /* Delete default.cfg files if they exist
                 string defaultCfg = Path.Combine(cfgPath, "default.cfg");
                 if (File.Exists(defaultCfg))
                     File.Delete(defaultCfg);
+                */
 
                 // Ini path
                 string iniPath = hbmame ? Path.Combine(AppConfig.GetFullPath("bios"), "hbmame", "ini") : Path.Combine(AppConfig.GetFullPath("bios"), "mame", "ini");
@@ -184,10 +172,8 @@ namespace EmulatorLauncher
                 WorkingDirectory = path,
                 Arguments = args,
                 WindowStyle = ProcessWindowStyle.Minimized,
-        };
+            };
         }
-
-        private string _exeName;
 
         private List<string> GetCommonMame64Arguments(string rom, bool hbmame, ScreenResolution resolution = null)
         {
@@ -309,8 +295,6 @@ namespace EmulatorLauncher
             if ((!SystemConfig.isOptSet("vsync") || SystemConfig.getOptBoolean("vsync")) && SystemConfig["mame_video_driver"] != "gdi")
                 retList.Add("-waitvsync");
 
-            bool useCoreBrightness = false;
-            
             /// Effects and shaders
             /// Currently support: BGFX, OpenGL (GLSL) or simple effects
             
@@ -323,14 +307,12 @@ namespace EmulatorLauncher
                     retList.Add(SystemConfig["bgfxbackend"]);
                 }
 
-                useCoreBrightness = true;
                 retList.Add("-bgfx_screen_chains");
                 retList.Add(SystemConfig["bgfxshaders"]);
             }
 
             else if (SystemConfig.isOptSet("glslshaders") && !string.IsNullOrEmpty(SystemConfig["glslshaders"]) && (SystemConfig["mame_video_driver"] == "opengl"))
             {
-                useCoreBrightness = true;
                 retList.Add("-gl_glsl");
                 retList.AddRange(Getglslshaderchain());
             }
@@ -344,48 +326,26 @@ namespace EmulatorLauncher
             // Adjust gamma, brightness and contrast
             if (SystemConfig["mame_video_driver"] != "gdi")
             {
-                if (useCoreBrightness)
+                if (SystemConfig.isOptSet("brightness") && !string.IsNullOrEmpty(SystemConfig["brightness"]))
                 {
-                    if (SystemConfig.isOptSet("brightness") && !string.IsNullOrEmpty(SystemConfig["brightness"]))
-                    {
-                        retList.Add("-brightness");
-                        retList.Add(SystemConfig["brightness"]);
-                    }
-
-                    if (SystemConfig.isOptSet("gamma") && !string.IsNullOrEmpty(SystemConfig["gamma"]))
-                    {
-                        retList.Add("-gamma");
-                        retList.Add(SystemConfig["gamma"]);
-                    }
-
-                    if (SystemConfig.isOptSet("contrast") && !string.IsNullOrEmpty(SystemConfig["contrast"]))
-                    {
-                        retList.Add("-contrast");
-                        retList.Add(SystemConfig["contrast"]);
-                    }
+                    string brightness = SystemConfig["brightness"].Substring(0, 3);
+                    retList.Add("-brightness");
+                    retList.Add(brightness);
                 }
 
-                else
+                if (SystemConfig.isOptSet("gamma") && !string.IsNullOrEmpty(SystemConfig["gamma"]))
                 {
-                    if (SystemConfig.isOptSet("brightness") && !string.IsNullOrEmpty(SystemConfig["brightness"]))
-                    {
-                        retList.Add("-full_screen_brightness");
-                        retList.Add(SystemConfig["brightness"]);
-                    }
-
-                    if (SystemConfig.isOptSet("gamma") && !string.IsNullOrEmpty(SystemConfig["gamma"]))
-                    {
-                        retList.Add("-full_screen_gamma");
-                        retList.Add(SystemConfig["gamma"]);
-                    }
-
-                    if (SystemConfig.isOptSet("contrast") && !string.IsNullOrEmpty(SystemConfig["contrast"]))
-                    {
-                        retList.Add("-full_screen_contrast");
-                        retList.Add(SystemConfig["contrast"]);
-                    }
+                    string gamma = SystemConfig["gamma"].Substring(0, 3);
+                    retList.Add("-gamma");
+                    retList.Add(gamma);
                 }
 
+                if (SystemConfig.isOptSet("contrast") && !string.IsNullOrEmpty(SystemConfig["contrast"]))
+                {
+                    string contrast = SystemConfig["contrast"].Substring(0, 3);
+                    retList.Add("-contrast");
+                    retList.Add(contrast);
+                }
             }
 
             // Add plugins
@@ -498,7 +458,10 @@ namespace EmulatorLauncher
                 retList.Add("-offscreen_reload");
 
             if (SystemConfig.isOptSet("mame_multimouse") && SystemConfig.getOptBoolean("mame_multimouse"))
+            {
                 retList.Add("-multimouse");
+                _multigun = true;
+            }
 
             // Gamepad driver
             retList.Add("-joystickprovider");
@@ -546,7 +509,8 @@ namespace EmulatorLauncher
                 }
             }
 
-            // Add code here
+            if (!SystemConfig.isOptSet("GameFocus") || !SystemConfig.getOptBoolean("Gamefocus"))
+                retList.Add("-ui_active");
 
             return retList;
         }
@@ -601,12 +565,35 @@ namespace EmulatorLauncher
 
         private void ConfigureMameini(string path)
         {
-            var uiIni = MameIniFile.FromFile(Path.Combine(path, "mame.ini"));
-            if (uiIni["writeconfig"] != "0")
+            // MAME.ini
+            var ini = MameIniFile.FromFile(Path.Combine(path, "mame.ini"));
+
+            if (ini["writeconfig"] != "0")
             {
-                uiIni["writeconfig"] = "0";
-                uiIni.Save();
+                ini["writeconfig"] = "0";
             }
+
+            if (SystemConfig.isOptSet("mame_output") && !string.IsNullOrEmpty(SystemConfig["mame_output"]))
+                ini["output"] = SystemConfig["mame_output"];
+            else
+                ini["output"] = "auto";
+            
+            ini.Save();
+
+            // Plugin.ini
+            var pluginsIni = MameIniFile.FromFile(Path.Combine(path, "plugin.ini"));
+
+            if (SystemConfig.isOptSet("mame_cheats") && SystemConfig.getOptBoolean("mame_cheats"))
+                pluginsIni["cheat"] = "1";
+            else
+                pluginsIni["cheat"] = "0";
+
+            if (SystemConfig.isOptSet("mame_hiscore") && SystemConfig.getOptBoolean("mame_hiscore"))
+                pluginsIni["hiscore"] = "1";
+            else
+                pluginsIni["hiscore"] = "0";
+
+            pluginsIni.Save();
         }
     }
 
@@ -617,8 +604,10 @@ namespace EmulatorLauncher
 
         public static MameIniFile FromFile(string file)
         {
-            var ret = new MameIniFile();
-            ret._fileName = file;
+            var ret = new MameIniFile
+            {
+                _fileName = file
+            };
 
             try
             {

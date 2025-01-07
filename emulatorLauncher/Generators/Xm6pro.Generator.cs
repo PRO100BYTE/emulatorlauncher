@@ -17,8 +17,9 @@ namespace EmulatorLauncher
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
 		{
+            SimpleLogger.Instance.Info("[Generator] Getting " + emulator + " path and executable name.");
 
-			string path = AppConfig.GetFullPath("xm6pro");
+            string path = AppConfig.GetFullPath("xm6pro");
 
 			string exe = Path.Combine(path, "XM6.exe");
 
@@ -27,15 +28,15 @@ namespace EmulatorLauncher
 
             bool fullscreen = !IsEmulationStationWindowed() || SystemConfig.getOptBoolean("forcefullscreen");
 
-            SetupConfiguration(path, rom, system, fullscreen);
-
             if (SystemConfig.isOptSet("68k_stretch") && SystemConfig["68k_stretch"] == "true")
                 SystemConfig["bezel"] = "none";
 
             if (fullscreen)
-                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution);
+                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
 
             _resolution = resolution;
+
+            SetupConfiguration(path, fullscreen);
 
             return new ProcessStartInfo()
 			{
@@ -46,25 +47,7 @@ namespace EmulatorLauncher
 
 		}
 
-        public override int RunAndWait(ProcessStartInfo path)
-        {
-            FakeBezelFrm bezel = null;
-
-            if (_bezelFileInfo != null)
-                bezel = _bezelFileInfo.ShowFakeBezel(_resolution);
-
-            int ret = base.RunAndWait(path);
-
-            if (bezel != null)
-                bezel.Dispose();
-
-            if (ret == 1)
-                return 0;
-
-            return ret;
-        }
-
-        private void SetupConfiguration(string path, string rom, string system, bool fullscreen)
+        private void SetupConfiguration(string path, bool fullscreen)
         {
             string iniFile = Path.Combine(path, "XM6.ini");
 
@@ -75,7 +58,6 @@ namespace EmulatorLauncher
 
                     ini.WriteValue("Window", "Full", fullscreen ? "1" : "0");  
                     ini.WriteValue("Resume", "Screen", "1");
-
                     ini.WriteValue("Basic", "AutoMemSw", "1");
                     ini.WriteValue("MIDI", "ID", "1");
                  
@@ -89,11 +71,28 @@ namespace EmulatorLauncher
                     BindIniFeature(ini, "MIDI", "IntLevel", "68k_midi_interrupt", "0"); // MIDI interrupt level
                     BindIniFeature(ini, "Basic", "Clock", "68k_clock", "0");
                     BindIniFeature(ini, "Basic", "Memory", "68k_ram", "0");
-
+                    
+                    ini.Save();
                 }
             }
             catch { }
         }
 
+        public override int RunAndWait(ProcessStartInfo path)
+        {
+            FakeBezelFrm bezel = null;
+
+            if (_bezelFileInfo != null)
+                bezel = _bezelFileInfo.ShowFakeBezel(_resolution);
+
+            int ret = base.RunAndWait(path);
+
+            bezel?.Dispose();
+
+            if (ret == 1)
+                return 0;
+
+            return ret;
+        }
     }
 }

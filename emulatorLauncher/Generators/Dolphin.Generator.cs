@@ -33,9 +33,12 @@ namespace EmulatorLauncher
         private ScreenResolution _resolution;
         private bool _triforce = false;
         private Rectangle _windowRect = Rectangle.Empty;
+        private bool _runWiiMenu = false;
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
+            SimpleLogger.Instance.Info("[Generator] Getting " + emulator + " path and executable name.");
+
             _triforce = (emulator == "dolphin-triforce" || core == "dolphin-triforce" || emulator == "triforce" || core == "triforce");
 
             string folderName = _triforce ? "dolphin-triforce" : "dolphin-emu";
@@ -62,7 +65,7 @@ namespace EmulatorLauncher
                 File.WriteAllText(portableFile, "");
 
             if ((system == "gamecube" && SystemConfig["ratio"] == "") || SystemConfig["ratio"] == "4/3")
-                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution);
+                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
 
             _resolution = resolution;
 
@@ -70,28 +73,55 @@ namespace EmulatorLauncher
             {
                 string sysconf = Path.Combine(AppConfig.GetFullPath("saves"), "dolphin", "User", "Wii", "shared2", "sys", "SYSCONF");
                 if (File.Exists(sysconf))
-                    writeWiiSysconfFile(sysconf);
+                    WriteWiiSysconfFile(sysconf);
                 else
                     SimpleLogger.Instance.Info("[WARNING] Wii Nand file not found in : " + sysconf);
             }
             
+            _runWiiMenu = SystemConfig.getOptBoolean("dolphin_wiimenu");
+
             SetupGeneralConfig(path, system, emulator, core, rom);
             SetupGfxConfig(path);
             SetupStateSlotConfig(path);
+            SetupCheevos(path);
 
-            DolphinControllers.WriteControllersConfig(path, system, rom, _triforce);
+            DolphinControllers.WriteControllersConfig(path, system, _triforce);
 
             if (Path.GetExtension(rom).ToLowerInvariant() == ".m3u")
                 rom = rom.Replace("\\", "/");
 
+            string[] extensions = new string[] { ".m3u", ".gcz", ".iso", ".ciso", ".wbfs", ".wad", ".rvz", ".wia" };
+            if (Path.GetExtension(rom).ToLowerInvariant() == ".zip" || Path.GetExtension(rom).ToLowerInvariant() == ".7z" || Path.GetExtension(rom).ToLowerInvariant() == ".squashfs")
+            {
+                string uncompressedRomPath = this.TryUnZipGameIfNeeded(system, rom, false, false);
+                if (Directory.Exists(uncompressedRomPath))
+                {
+                    string[] romFiles = Directory.GetFiles(uncompressedRomPath, "*.*", SearchOption.AllDirectories).OrderBy(file => Array.IndexOf(extensions, Path.GetExtension(file).ToLowerInvariant())).ToArray();
+                    rom = romFiles.FirstOrDefault(file => extensions.Any(ext => Path.GetExtension(file).Equals(ext, StringComparison.OrdinalIgnoreCase)));
+                    ValidateUncompressedGame();
+                }
+            }
+
             string saveState = "";
+            string runBatch = "-b ";
+            if (SystemConfig.getOptBoolean("dolphin_gui"))
+                runBatch = "";
+
             if (File.Exists(SystemConfig["state_file"]))
                 saveState = " --save_state=\"" + Path.GetFullPath(SystemConfig["state_file"]) + "\"";
+
+            if (_runWiiMenu)
+                return new ProcessStartInfo()
+                {
+                    FileName = exe,
+                    Arguments = runBatch + "-n 0000000100000002",
+                    WorkingDirectory = path,
+                };
 
             return new ProcessStartInfo()
             {
                 FileName = exe,
-                Arguments = "-b -e \"" + rom + "\"" + saveState,
+                Arguments = runBatch + "-e \"" + rom + "\"" + saveState,
                 WorkingDirectory = path,
                 WindowStyle = (_bezelFileInfo == null ? ProcessWindowStyle.Normal : ProcessWindowStyle.Maximized)
             };
@@ -123,31 +153,52 @@ namespace EmulatorLauncher
             {
                 using (var ini = new IniFile(iniFile, IniOptions.UseSpaces))
                 {
+                    // Draw FPS
+                    if (SystemConfig.isOptSet("dolphin_showfps") && SystemConfig["dolphin_showfps"] == "full")
+                    {
+                        ini.WriteValue("Settings", "ShowFTimes", "True");
+                        ini.WriteValue("Settings", "ShowFPS", "True");
+                        ini.WriteValue("Settings", "ShowGraphs", "True");
+                        ini.WriteValue("Settings", "ShowSpeed", "True");
+                    }
+                    else if (SystemConfig.isOptSet("dolphin_showfps") && SystemConfig["dolphin_showfps"] == "fps_only")
+                    {
+                        ini.WriteValue("Settings", "ShowFTimes", "False");
+                        ini.WriteValue("Settings", "ShowFPS", "True");
+                        ini.WriteValue("Settings", "ShowGraphs", "False");
+                        ini.WriteValue("Settings", "ShowSpeed", "False");
+                    }
+                    else
+                    {
+                        ini.WriteValue("Settings", "ShowFTimes", "False");
+                        ini.WriteValue("Settings", "ShowFPS", "False");
+                        ini.WriteValue("Settings", "ShowGraphs", "False");
+                        ini.WriteValue("Settings", "ShowSpeed", "False");
+                    }
+
                     // Fullscreen
                     if (_bezelFileInfo != null)
                         ini.WriteValue("Settings", "BorderlessFullscreen", "True");
-                    else
-                        ini.WriteValue("Settings", "BorderlessFullscreen", "False");
 
                     // Ratio
                     if (SystemConfig.isOptSet("ratio"))
-					{
-						if (SystemConfig["ratio"] == "4/3")
-						{
-							ini.WriteValue("Settings", "AspectRatio", "2");
-						}
-						else if (SystemConfig["ratio"] == "16/9")
-							ini.WriteValue("Settings", "AspectRatio", "1");
-						else if (SystemConfig["ratio"] == "Stretched")
-							ini.WriteValue("Settings", "AspectRatio", "3");
-					}
-					else
-						ini.WriteValue("Settings", "AspectRatio", "0");
+                    {
+                        if (SystemConfig["ratio"] == "4/3")
+	                    {
+		                    ini.WriteValue("Settings", "AspectRatio", "2");
+	                    }
+	                    else if (SystemConfig["ratio"] == "16/9")
+		                    ini.WriteValue("Settings", "AspectRatio", "1");
+	                    else if (SystemConfig["ratio"] == "Stretched")
+		                    ini.WriteValue("Settings", "AspectRatio", "3");
+                    }
+                    else
+	                    ini.WriteValue("Settings", "AspectRatio", "0");
 					
-					// widescreen hack but only if enable cheats is not enabled - Default Off
-					if (SystemConfig.isOptSet("widescreen_hack") && SystemConfig.getOptBoolean("widescreen_hack"))
-					{
-						ini.WriteValue("Settings", "wideScreenHack", "True");
+                    // widescreen hack but only if enable cheats is not enabled - Default Off
+                    if (SystemConfig.isOptSet("widescreen_hack") && SystemConfig.getOptBoolean("widescreen_hack"))
+                    {
+	                    ini.WriteValue("Settings", "wideScreenHack", "True");
 
                         // Set Stretched only if ratio is not forced to 16/9 
                         if (!SystemConfig.isOptSet("ratio") || SystemConfig["ratio"] != "16/9")
@@ -155,7 +206,7 @@ namespace EmulatorLauncher
                             _bezelFileInfo = null;
                             ini.WriteValue("Settings", "AspectRatio", "3");
                         }
-					}
+                    }
                     else
                         ini.Remove("Settings", "wideScreenHack");
 
@@ -191,6 +242,8 @@ namespace EmulatorLauncher
                         }
                     }
 
+                    BindBoolIniFeatureOn(ini, "Hacks", "XFBToTextureEnable", "dolphin_xfbtotexture", "True", "False");
+
                     // Store EFB Copies
                     if (Features.IsSupported("EFBCopies"))
                     {
@@ -219,11 +272,11 @@ namespace EmulatorLauncher
                     // HiResTextures
                     BindBoolIniFeature(ini, "Settings", "HiresTextures", "hires_textures", "True", "False");
                     BindBoolIniFeature(ini, "Settings", "CacheHiresTextures", "CacheHiresTextures", "True", "False");
+                    BindBoolIniFeature(ini, "Settings", "EnableMods", "dolphin_graphicsmods", "True", "False");
 
                     // Other settings
-                    BindIniFeature(ini, "Hardware", "VSync", "dolphin_vsync", "True");
-                    BindBoolIniFeature(ini, "Settings", "ShowFPS", "DrawFramerate", "True", "False");
-                    BindIniFeature(ini, "Settings", "InternalResolution", "internal_resolution", "0");
+                    BindBoolIniFeatureOn(ini, "Hardware", "VSync", "dolphin_vsync", "True", "False");
+                    BindIniFeatureSlider(ini, "Settings", "InternalResolution", "internal_resolution", "0");
                     BindIniFeature(ini, "Enhancements", "ForceTextureFiltering", "ForceFiltering", "0");
                     BindIniFeature(ini, "Enhancements", "PostProcessingShader", "dolphin_shaders", "(off)");
                     BindBoolIniFeature(ini, "Hacks", "VertexRounding", "VertexRounding", "True", "False");
@@ -231,19 +284,61 @@ namespace EmulatorLauncher
                     BindBoolIniFeature(ini, "Hacks", "FastTextureSampling", "manual_texture_sampling", "False", "True");
                     BindBoolIniFeature(ini, "Settings", "WaitForShadersBeforeStarting", "WaitForShadersBeforeStarting", "True", "False");
                     BindIniFeature(ini, "Settings", "ShaderCompilationMode", "ShaderCompilationMode", "2");
-                    BindIniFeature(ini, "Hacks", "EFBAccessEnable", "EFBAccessEnable", "False");
-                    BindIniFeature(ini, "Hacks", "EFBScaledCopy", "EFBScaledCopy", "True");
-                    BindIniFeature(ini, "Hacks", "EFBEmulateFormatChanges", "EFBEmulateFormatChanges", "True");
+                    BindBoolIniFeature(ini, "Hacks", "EFBAccessEnable", "EFBAccessEnable", "False", "True");
+                    BindBoolIniFeatureOn(ini, "Hacks", "EFBScaledCopy", "EFBScaledCopy", "True", "False");
+                    BindBoolIniFeature(ini, "Hacks", "EFBEmulateFormatChanges", "EFBEmulateFormatChanges", "True", "False");
                     BindIniFeature(ini, "Enhancements", "MaxAnisotropy", "anisotropic_filtering", "0");
                     BindBoolIniFeature(ini, "Settings", "SSAA", "ssaa", "True", "False");
                     BindBoolIniFeature(ini, "Settings", "Crop", "dolphin_crop", "True", "False");
                     BindBoolIniFeature(ini, "Enhancements", "HDROutput", "enable_hdr", "True", "False");
+                    BindIniFeature(ini, "Enhancements", "OutputResampling", "OutputResampling", "0");
                 }
             }
             catch { }
         }
-    
-        private string getGameCubeLangFromEnvironment()
+
+        private void SetupCheevos(string path)
+        {
+            string iniFile = Path.Combine(path, "User", "Config", "RetroAchievements.ini");
+
+            try
+            {
+                using (var ini = new IniFile(iniFile, IniOptions.UseSpaces))
+                {
+                    // Enable cheevos is needed
+                    if (Features.IsSupported("cheevos") && SystemConfig.getOptBoolean("retroachievements"))
+                    {
+                        ini.WriteValue("Achievements", "Enabled", "True");
+                        ini.WriteValue("Achievements", "AchievementsEnabled", "True");
+                        ini.WriteValue("Achievements", "EncoreEnabled", SystemConfig.getOptBoolean("retroachievements.encore") ? "True" : "False");
+                        ini.WriteValue("Achievements", "HardcoreEnabled", SystemConfig.getOptBoolean("retroachievements.hardcore") ? "True" : "False");
+                        ini.WriteValue("Achievements", "LeaderboardsEnabled", SystemConfig.getOptBoolean("retroachievements.leaderboards") ? "True" : "False");
+                        ini.WriteValue("Achievements", "DiscordPresenceEnabled", SystemConfig.getOptBoolean("retroachievements.richpresence") ? "True" : "False");
+                        ini.WriteValue("Achievements", "UnofficialEnabled", "False");
+                        ini.WriteValue("Achievements", "BadgesEnabled", "True");
+                        ini.WriteValue("Achievements", "ProgressEnabled", SystemConfig.getOptBoolean("retroachievements.challenge_indicators") ? "True" : "False");
+
+                        // Inject credentials
+                        if (SystemConfig.isOptSet("retroachievements.username") && SystemConfig.isOptSet("retroachievements.token"))
+                        {
+                            ini.WriteValue("Achievements", "Username", SystemConfig["retroachievements.username"]);
+                            ini.WriteValue("Achievements", "ApiToken", SystemConfig["retroachievements.token"]);
+                        }
+                    }
+                    else
+                    {
+                        ini.WriteValue("Achievements", "Enabled", "False");
+                        ini.WriteValue("Achievements", "AchievementsEnabled", "False");
+                        ini.WriteValue("Achievements", "HardcoreEnabled", "False");
+                        ini.WriteValue("Achievements", "BadgesEnabled", "False");
+                        ini.WriteValue("Achievements", "ProgressEnabled", "False");
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private string GetGameCubeLangFromEnvironment()
         {
             var availableLanguages = new Dictionary<string, string>() 
             { 
@@ -253,15 +348,14 @@ namespace EmulatorLauncher
             var lang = GetCurrentLanguage();
             if (!string.IsNullOrEmpty(lang))
             {
-                string ret;
-                if (availableLanguages.TryGetValue(lang, out ret))
+                if (availableLanguages.TryGetValue(lang, out string ret))
                     return ret;
             }
 
             return "0";
         }
 
-        private int getWiiLangFromEnvironment()
+        private int GetWiiLangFromEnvironment()
         {
             var availableLanguages = new Dictionary<string, int>()
             {
@@ -271,31 +365,38 @@ namespace EmulatorLauncher
             var lang = GetCurrentLanguage();
             if (!string.IsNullOrEmpty(lang))
             {
-                int ret;
-                if (availableLanguages.TryGetValue(lang, out ret))
+                if (availableLanguages.TryGetValue(lang, out int ret))
                     return ret;
             }
 
             return 1;
         }
 
-        private void writeWiiSysconfFile(string path)
+        private void WriteWiiSysconfFile(string path)
         {
             if (!File.Exists(path))
                 return;
 
             SimpleLogger.Instance.Info("[INFO] Writing to wii system nand in : " + path);
 
-            int langId = 1;
+            int langId;
             int barPos = 0;
+            int ratio = 1;
+            int progScan = 0;
 
             if (SystemConfig.isOptSet("wii_language") && !string.IsNullOrEmpty(SystemConfig["wii_language"]))
                 langId = SystemConfig["wii_language"].ToInteger();
             else
-                langId = getWiiLangFromEnvironment();
+                langId = GetWiiLangFromEnvironment();
 
             if (SystemConfig.isOptSet("sensorbar_position") && !string.IsNullOrEmpty(SystemConfig["sensorbar_position"]))
                 barPos = SystemConfig["sensorbar_position"].ToInteger();
+
+            if (SystemConfig.isOptSet("wii_tvmode") && !string.IsNullOrEmpty(SystemConfig["wii_tvmode"]))
+                ratio = SystemConfig["wii_tvmode"].ToInteger();
+
+            if (SystemConfig.isOptSet("wii_progscan") && SystemConfig.getOptBoolean("wii_progscan"))
+                progScan = 1;
 
             // Read SYSCONF file
             byte[] bytes = File.ReadAllBytes(path);
@@ -309,20 +410,40 @@ namespace EmulatorLauncher
                 for (int i = 0; i < toSet.Length; i++)
                     bytes[index + i] = toSet[i];
             }
-
             SimpleLogger.Instance.Info("[INFO] Writing language " + langId.ToString() + " to wii system nand");
 
             // Search BT.BAR pattern and replace with target position
             byte[] barPositionPattern = new byte[] { 0x42, 0x54, 0x2E, 0x42, 0x41, 0x52 };
             int index2 = bytes.IndexOf(barPositionPattern);
-            if (index >= 0 && index + langPattern.Length + 1 < bytes.Length)
+            if (index2 >= 0 && index2 + barPositionPattern.Length + 1 < bytes.Length)
             {
                 var toSet = new byte[] { 0x42, 0x54, 0x2E, 0x42, 0x41, 0x52, (byte)barPos };
                 for (int i = 0; i < toSet.Length; i++)
                     bytes[index2 + i] = toSet[i];
             }
-
             SimpleLogger.Instance.Info("[INFO] Writing sensor bar position " + barPos.ToString() + " to wii system nand");
+            
+            // Search IPL.AR pattern and replace with target position
+            byte[] ratioPositionPattern = new byte[] { 0x49, 0x50, 0x4C, 0x2E, 0x41, 0x52 };
+            int index3 = bytes.IndexOf(ratioPositionPattern);
+            if (index3 >= 0 && index3 + ratioPositionPattern.Length + 1 < bytes.Length)
+            {
+                var toSet = new byte[] { 0x49, 0x50, 0x4C, 0x2E, 0x41, 0x52, (byte)ratio };
+                for (int i = 0; i < toSet.Length; i++)
+                    bytes[index3 + i] = toSet[i];
+            }
+            SimpleLogger.Instance.Info("[INFO] Writing wii screen ratio " + ratio.ToString() + " to wii system nand");
+
+            // Search IPL.PGS pattern and replace with target position
+            byte[] pgsPositionPattern = new byte[] { 0x49, 0x50, 0x4C, 0x2E, 0x50, 0x47, 0x53 };
+            int index4 = bytes.IndexOf(pgsPositionPattern);
+            if (index4 >= 0 && index4 + pgsPositionPattern.Length + 1 < bytes.Length)
+            {
+                var toSet = new byte[] { 0x49, 0x50, 0x4C, 0x2E, 0x50, 0x47, 0x53, (byte)progScan };
+                for (int i = 0; i < toSet.Length; i++)
+                    bytes[index4 + i] = toSet[i];
+            }
+            SimpleLogger.Instance.Info("[INFO] Writing wii Progressive Scan " + progScan.ToString() + " to wii system nand");
 
             File.WriteAllBytes(path, bytes);
         }
@@ -335,8 +456,7 @@ namespace EmulatorLauncher
             {
                 using (var ini = new IniFile(iniFile, IniOptions.UseSpaces | IniOptions.KeepEmptyValues))
                 {
-                    Rectangle emulationStationBounds;
-                    if (IsEmulationStationWindowed(out emulationStationBounds, true) && !SystemConfig.getOptBoolean("forcefullscreen"))
+                    if (IsEmulationStationWindowed(out Rectangle emulationStationBounds, true) && !SystemConfig.getOptBoolean("forcefullscreen"))
                     {
                         _windowRect = emulationStationBounds;
                         _bezelFileInfo = null;
@@ -345,29 +465,18 @@ namespace EmulatorLauncher
                     else
                         ini.WriteValue("Display", "Fullscreen", "True");
 
-                    // Draw FPS
-                    if (SystemConfig.isOptSet("DrawFramerate") && SystemConfig.getOptBoolean("DrawFramerate"))
-                    {
-                        ini.WriteValue("General", "ShowLag", "True");
-                        ini.WriteValue("General", "ShowFrameCount", "True");
-                    }
-                    else
-                    {
-                        ini.WriteValue("General", "ShowLag", "False");
-                        ini.WriteValue("General", "ShowFrameCount", "False");
-                    }
-
                     // Discord
                     BindBoolIniFeature(ini, "General", "UseDiscordPresence", "discord", "True", "False");
 
                     // Skip BIOS
-                    BindBoolIniFeature(ini, "Core", "SkipIPL", "skip_bios", "False", "True");
+                    BindBoolIniFeatureOn(ini, "Core", "SkipIPL", "skip_bios", "True", "False");
 
                     // OSD Messages
-                    BindBoolIniFeature(ini, "Interface", "OnScreenDisplayMessages", "OnScreenDisplayMessages", "False", "True");
+                    BindBoolIniFeatureOn(ini, "Interface", "OnScreenDisplayMessages", "OnScreenDisplayMessages", "True", "False");
 
                     // don't ask about statistics
                     ini.WriteValue("Analytics", "PermissionAsked", "True");
+                    ini.WriteValue("Analytics", "Enabled", "False");
 
                     // don't confirm at stop
                     ini.WriteValue("Interface", "ConfirmStop", "False");
@@ -376,15 +485,9 @@ namespace EmulatorLauncher
 
                     // language (for gamecube at least)
                     if (Features.IsSupported("gamecube_language") && SystemConfig.isOptSet("gamecube_language"))
-                    {
                         ini.WriteValue("Core", "SelectedLanguage", SystemConfig["gamecube_language"]);
-                        ini.WriteValue("Core", "GameCubeLanguage", SystemConfig["gamecube_language"]);
-                    }
                     else
-                    {
-                        ini.WriteValue("Core", "SelectedLanguage", getGameCubeLangFromEnvironment());
-                        ini.WriteValue("Core", "GameCubeLanguage", getGameCubeLangFromEnvironment());
-                    }
+                        ini.WriteValue("Core", "SelectedLanguage", GetGameCubeLangFromEnvironment());
 
                     // Audio
                     if (SystemConfig.isOptSet("enable_dpl2") && SystemConfig.getOptBoolean("enable_dpl2"))
@@ -400,10 +503,10 @@ namespace EmulatorLauncher
                         ini.WriteValue("DSP", "EnableJIT", "False");
                     }
 
-                    BindIniFeature(ini, "DSP", "Backend", "audiobackend", "Cubeb");
+                    BindIniFeature(ini, "DSP", "Backend", "dolphin_audiobackend", "Cubeb");
 
                     // Video backend - Default
-                    BindIniFeature(ini, "Core", "GFXBackend", "gfxbackend", "Vulkan");
+                    BindIniFeature(ini, "Core", "GFXBackend", "dolphin_gfxbackend", "Vulkan");
 
                     // Cheats - default false
                     if (!_triforce)
@@ -416,7 +519,7 @@ namespace EmulatorLauncher
                     BindBoolIniFeature(ini, "Core", "MMU", "enable_mmu", "True", "False");
 
                     // CPU Thread (Dual Core)
-                    BindBoolIniFeature(ini, "Core", "CPUThread", "CPUThread", "True", "False");
+                    BindBoolIniFeatureOn(ini, "Core", "CPUThread", "dolphin_cputhread", "True", "False");
 
                     // gamecube pads forced as standard pad
                     bool emulatedWiiMote = (system == "wii" && Program.SystemConfig.isOptSet("emulatedwiimotes") && Program.SystemConfig.getOptBoolean("emulatedwiimotes"));
@@ -455,6 +558,17 @@ namespace EmulatorLauncher
                             _saveStatesWatcher = new DolphinSaveStatesMonitor(rom, Path.Combine(path, "User", "StateSaves"), localPath);
                             _saveStatesWatcher.PrepareEmulatorRepository();
                         }
+                        // DumpPath
+                        string dumpPath = Path.Combine(savesPath, "dolphin", "User", "Dump");
+                        if (!Directory.Exists(dumpPath)) try { Directory.CreateDirectory(dumpPath); }
+                            catch { }
+                        ini.WriteValue("General", "DumpPath", dumpPath);
+
+                        // WFSPath
+                        string wfsPath = Path.Combine(savesPath, "dolphin", "User", "WFS");
+                        if (!Directory.Exists(wfsPath)) try { Directory.CreateDirectory(wfsPath); }
+                            catch { }
+                        ini.WriteValue("General", "WFSPath", wfsPath);
 
                         // Wii NAND path
                         string wiiNandPath = Path.Combine(savesPath, "dolphin", "User", "Wii");
@@ -512,10 +626,17 @@ namespace EmulatorLauncher
                                 ini.WriteValue("Core", "SIDevice" + i, "0");
                         }
                     }
+
                     // Disable auto updates
                     string updateTrack = ini.GetValue("AutoUpdate", "UpdateTrack");
                     if (updateTrack != "")
-                        ini.WriteValue("AutoUpdate", "UpdateTrack", "\"\"");
+                        ini.WriteValue("AutoUpdate", "UpdateTrack", "''");
+
+                    // Set defaultISO when running the Wii Menu
+                    if (_runWiiMenu)
+                        ini.WriteValue("Core", "DefaultISO", rom);
+                    else
+                        ini.WriteValue("Core", "defaultISO", "\"\"");
                 }
             }
             catch { }
@@ -581,8 +702,7 @@ namespace EmulatorLauncher
                 }
             }
 
-            if (bezel != null)
-                bezel.Dispose();
+            bezel?.Dispose();
 
             return ret;
         }

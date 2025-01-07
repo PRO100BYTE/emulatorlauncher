@@ -14,6 +14,8 @@ namespace EmulatorLauncher
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
+            SimpleLogger.Instance.Info("[Generator] Getting " + emulator + " path and executable name.");
+
             string batFile = Path.Combine(rom, "dosbox.bat");
 
             string gameConfFile =  Path.Combine(rom, "dosbox.cfg");
@@ -41,8 +43,10 @@ namespace EmulatorLauncher
             if (!File.Exists(exe))
                 return null;
 
-            List<string> commandArray = new List<string>();
-            commandArray.Add("\"" + batFile + "\"");
+            List<string> commandArray = new List<string>
+            {
+                "\"" + batFile + "\""
+            };
 
             if (File.Exists(gameConfFile))
             {

@@ -16,6 +16,19 @@ namespace EmulatorLauncher
     {
         private BezelFiles _bezelFileInfo;
         private ScreenResolution _resolution;
+        private SaveStatesWatcher _saveStatesWatcher;
+        private static int _saveStateSlot;
+
+        public override void Cleanup()
+        {
+            if (_saveStatesWatcher != null)
+            {
+                _saveStatesWatcher.Dispose();
+                _saveStatesWatcher = null;
+            }
+
+            base.Cleanup();
+        }
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
@@ -23,8 +36,8 @@ namespace EmulatorLauncher
             string path = AppConfig.GetFullPath("openmsx");
 
             // Bezels with reshade
-            if (!ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x64, system, rom, path, resolution))
-                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution);
+            if (!ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x64, system, rom, path, resolution, emulator))
+                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
 
             _resolution = resolution;
 
@@ -52,8 +65,14 @@ namespace EmulatorLauncher
             if (!File.Exists(exe))
                 return null;
 
-            // Setup xml file
-            SetupConfiguration(sharePath, rom);
+            if (Program.HasEsSaveStates && Program.EsSaveStates.IsEmulatorSupported(emulator))
+            {
+                string localPath = Program.EsSaveStates.GetSavePath(system, emulator, core);
+                string emulatorPath = Path.Combine(AppConfig.GetFullPath("bios"), "openmsx", "savestates");
+
+                _saveStatesWatcher = new OpenmsxSaveStatesMonitor(rom, emulatorPath, localPath);
+                _saveStatesWatcher.PrepareEmulatorRepository();
+            }
 
             //setting up command line parameters
             var commandArray = new List<string>();
@@ -151,7 +170,7 @@ namespace EmulatorLauncher
             if (system != "colecovision")
             {
                 List<string> extensionlist = SystemConfig
-                    .Where(c => c.Name != null && c.Name.StartsWith(system + ".ext_") && c.Value == "1")
+                    .Where(c => c.Name != null && c.Name.StartsWith(system + ".ext_") && (c.Value == "1" || c.Value == "true"))
                     .Select(c => c.Name.Replace(system + ".ext_", ""))
                     .ToList();
 
@@ -178,7 +197,7 @@ namespace EmulatorLauncher
             if (!Directory.Exists(scriptspath)) try { Directory.CreateDirectory(scriptspath); }
                 catch { }
 
-            checkOrCreateScripts(scriptspath);
+            CheckOrCreateScripts(scriptspath);
 
             if (romtype != null && romtype == "-cassetteplayer")
             {
@@ -191,15 +210,38 @@ namespace EmulatorLauncher
                 commandArray.Add("\"" + Path.Combine(scriptspath, "autorunlaserdisc.tcl") + "\"");
             }
 
+            int slot = _saveStatesWatcher.Slot != -1 ? _saveStatesWatcher.Slot : 0;
+            _saveStateSlot = slot + 1;
+            if (!string.IsNullOrEmpty(SystemConfig["state_file"]) && File.Exists(SystemConfig["state_file"]) && _saveStatesWatcher != null)
+            {
+                string state = Path.GetFullPath(SystemConfig["state_file"]);
+
+                if (OpenmsxSaveStatesMonitor.GetEmulatorStateName(_saveStatesWatcher.SaveStatesPath, rom, slot, out string stateGameName))
+                {
+                    string stateScript = Path.Combine(scriptspath, "loadstate.tcl");
+                    try
+                    {
+                        using (StreamWriter stateScriptString = new StreamWriter(stateScript, false))
+                        {
+                            stateScriptString.WriteLine("loadstate " + "\"" + stateGameName + "\"");
+                            stateScriptString.Close();
+                        }
+
+                        commandArray.Add("-script");
+                        commandArray.Add("\"" + stateScript + "\"");
+                    }
+                    catch { }
+                }
+            }
 
             // Add media type
             if (romtype != null)
-               commandArray.Add(romtype);
+            commandArray.Add(romtype);
             
             commandArray.Add("\"" + rom + "\"");
 
-            // Setup controllers (using tcl scripts)
-            commandArray.AddRange(configureControllers(scriptspath));
+            // Setup configuration and controllers (using tcl scripts)
+            SetupConfiguration(sharePath, scriptspath, commandArray);
 
             string args = string.Join(" ", commandArray);
 
@@ -215,8 +257,7 @@ namespace EmulatorLauncher
         /// Configure emulator features (settings.xml)
         /// </summary>
         /// <param name="path"></param>
-        /// <param name="rom"></param>
-        private void SetupConfiguration(string path, string rom)
+        private void SetupConfiguration(string path, string scriptspath, List<string> commandArray)
         {
             string sharepath = Path.Combine(path, "share");
             if (!Directory.Exists(sharepath)) try { Directory.CreateDirectory(sharepath); }
@@ -237,8 +278,7 @@ namespace EmulatorLauncher
             // Vsync
             bool vsyncoff = SystemConfig.getOptBoolean("msx_vsync");
 
-            XElement vsync = xdoc.Descendants()
-            .Where(x => (string)x.Attribute("id") == "vsync").FirstOrDefault();
+            XElement vsync = xdoc.Descendants().Where(x => (string)x.Attribute("id") == "vsync").FirstOrDefault();
 
             if (vsync == null)
             {
@@ -267,7 +307,7 @@ namespace EmulatorLauncher
             // Scale factor
             string scale = "2";
             if (SystemConfig.isOptSet("msx_scale") && !string.IsNullOrEmpty(SystemConfig["msx_scale"]))
-                scale = SystemConfig["msx_scale"];
+                scale = SystemConfig["msx_scale"].ToIntegerString();
 
             XElement scalefactor = xdoc.Descendants()
             .Where(x => (string)x.Attribute("id") == "scale_factor").FirstOrDefault();
@@ -315,26 +355,26 @@ namespace EmulatorLauncher
             else
                 resampler.SetValue(audioresampler);
 
-            // OSD icon set
-            string iconset = "none";
-            if (SystemConfig.isOptSet("msx_osdset") && !string.IsNullOrEmpty(SystemConfig["msx_osdset"]))
-                iconset = SystemConfig["msx_osdset"];
+            // Fullspeed when loading
+            string fullspeedwhenloading = "false";
+            if (SystemConfig.isOptSet("msx_loadfullspeed") && SystemConfig.getOptBoolean("msx_loadfullspeed"))
+                fullspeedwhenloading = "true";
 
-            XElement osdiconset = xdoc.Descendants()
-            .Where(x => (string)x.Attribute("id") == "osd_leds_set").FirstOrDefault();
+            XElement fullspeed = xdoc.Descendants()
+            .Where(x => (string)x.Attribute("id") == "fullspeedwhenloading").FirstOrDefault();
 
-            if (osdiconset == null)
+            if (fullspeed == null)
             {
-                osdiconset = new XElement("setting", new XAttribute("id", "osd_leds_set"));
-                osdiconset.SetValue(iconset);
-                settings.Add(osdiconset);
+                fullspeed = new XElement("setting", new XAttribute("id", "fullspeedwhenloading"));
+                fullspeed.SetValue(fullspeedwhenloading);
+                settings.Add(fullspeed);
             }
             else
-                osdiconset.SetValue(iconset);
+                fullspeed.SetValue(fullspeedwhenloading);
 
             // Clean existing bindings
             var bindings = topnode.GetOrCreateElement("bindings");
-            bindings.RemoveAll();
+            commandArray.AddRange(ConfigureControllers(scriptspath, settings, bindings));
 
             // Save xml file
             using (var writer = new XmlTextWriter(settingsFile, new UTF8Encoding(false)))
@@ -356,8 +396,9 @@ namespace EmulatorLauncher
             Thread.Sleep(4000);
             process.WaitForExit();
 
-            if (bezel != null)
-                bezel.Dispose();
+            bezel?.Dispose();
+
+            ReshadeManager.UninstallReshader(ReshadeBezelType.opengl, path.WorkingDirectory);
 
             return 0;
         }
@@ -366,7 +407,7 @@ namespace EmulatorLauncher
         /// Configure emulator features (settings.xml)
         /// </summary>
         /// <param name="path"></param>
-        private void checkOrCreateScripts(string path)
+        private void CheckOrCreateScripts(string path)
         {
             foreach (var script in scriptFiles)
             {
@@ -383,7 +424,7 @@ namespace EmulatorLauncher
             }
         }
 
-        static Dictionary<string, string[]> msxMedias = new Dictionary<string, string[]>()
+        static readonly Dictionary<string, string[]> msxMedias = new Dictionary<string, string[]>()
         {
             { "-cart", new string[] { ".mx1", ".mx2", ".ri", ".rom" } },
             { "-diska", new string[] { ".di1", ".di2", ".dmk", ".dsk", ".fd1", ".fd2", ".xsa" } },
@@ -391,15 +432,15 @@ namespace EmulatorLauncher
             { "-cassetteplayer", new string[] { ".cas", ".wav" } }
         };
 
-        static List<string> machineWithDiskDrive = new List<string>() { "Panasonic_FS-A1GT", "Panasonic_FS-A1WSX", "National_FS-5500F2", "Philips_NMS_8245", "National_CF-3300" };
-        static List<string> machineWithCassette = new List<string>() { "Panasonic_FS-A1WSX", "National_FS-5500F2", "Pioneer_PX-7", "Philips_NMS_8245", "National_CF-3300", "Philips_VG_8020" };
-        static List<string> machineWithLaserdisc = new List<string>() { "Pioneer_PX-7" };
+        static readonly List<string> machineWithDiskDrive = new List<string>() { "Panasonic_FS-A1GT", "Panasonic_FS-A1WSX", "National_FS-5500F2", "Philips_NMS_8245", "National_CF-3300" };
+        static readonly List<string> machineWithCassette = new List<string>() { "Panasonic_FS-A1WSX", "National_FS-5500F2", "Pioneer_PX-7", "Philips_NMS_8245", "National_CF-3300", "Philips_VG_8020" };
+        static readonly List<string> machineWithLaserdisc = new List<string>() { "Pioneer_PX-7" };
 
-        static string defaultDiskMachine = "Panasonic_FS-A1GT";
-        static string defaultMachineCassette = "Panasonic_FS-A1WSX";
-        static string defaultLaserdiscMachine = "Pioneer_PX-7";
+        static readonly string defaultDiskMachine = "Panasonic_FS-A1GT";
+        static readonly string defaultMachineCassette = "Panasonic_FS-A1WSX";
+        static readonly string defaultLaserdiscMachine = "Pioneer_PX-7";
 
-        static Dictionary<string, string[]> scriptFiles = new Dictionary<string, string[]>()
+        static readonly Dictionary<string, string[]> scriptFiles = new Dictionary<string, string[]>()
         {
             { "autoruncassettes", new string[] {"set autoruncassettes on" } },
             { "autorunlaserdisc", new string[] {"set autorunlaserdisc on" } },
@@ -407,7 +448,7 @@ namespace EmulatorLauncher
             { "plugmouse", new string[] { "unplug joyporta", "unplug joyportb", "plug joyporta mouse", "set grabinput on" } }
         };
 
-        static Dictionary<string, string[]> biosFiles = new Dictionary<string, string[]>()
+        static readonly Dictionary<string, string[]> biosFiles = new Dictionary<string, string[]>()
         {
             { "National_CF-3300", new string[] { "cf-3300_basic-bios1.rom", "cf-3300_disk.rom" } },
             { "National_FS-5500F2", new string[] { "fs-5500_basic-bios2.rom", "fs-5500_disk.rom", "fs-5500_kanjibasic.rom", "fs-5500_kanjifont.rom", "fs-5500_msx2sub.rom", "fs-5500_superimp.rom" } },
@@ -418,7 +459,6 @@ namespace EmulatorLauncher
             { "Pioneer_PX-7", new string[] { "px-7_basic-bios1.rom", "px-7_pbasic.rom" } },
             { "ColecoVision_SGM", new string[] { "coleco.rom" } },
             { "Spectravideo_SVI-738_SE", new string[] { "svi-738_disk.rom", "svi-738_rs232.rom", "svi-738_se_basic-bios1.rom" } }
-
         };
     }
 }

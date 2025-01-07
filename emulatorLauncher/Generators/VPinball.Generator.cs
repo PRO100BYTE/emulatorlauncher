@@ -23,10 +23,10 @@ namespace EmulatorLauncher
             DependsOnDesktopResolution = true;
         }
 
-        private LoadingForm _splash;
-        private string _rom;
+        private LoadingForm _splash;       
         private Version _version;
         private string _processName;
+        private string _exe;        
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
@@ -40,9 +40,14 @@ namespace EmulatorLauncher
             if (!File.Exists(exe))
                 return null;
 
+            _exe = exe;
             _processName = Path.GetFileNameWithoutExtension(exe);
             _version = new Version(10, 0, 0, 0);
-            Version.TryParse(FileVersionInfo.GetVersionInfo(exe).ProductVersion.Replace(",", ".").Replace(" ", ""), out _version);
+
+            // Get version from executable
+            var versionInfo = FileVersionInfo.GetVersionInfo(exe);
+            string versionString = versionInfo.FileMajorPart + "." + versionInfo.FileMinorPart + "." + versionInfo.FileBuildPart + "." + versionInfo.FilePrivatePart;
+            Version.TryParse(versionString, out _version);
 
             rom = this.TryUnZipGameIfNeeded(system, rom, true, false);
             if (Directory.Exists(rom))
@@ -52,7 +57,6 @@ namespace EmulatorLauncher
                     return null;
             }
 
-            _rom = rom;
             _splash = ShowSplash(rom);
 
             ScreenResolution.SetHighDpiAware(exe);
@@ -63,6 +67,10 @@ namespace EmulatorLauncher
             string romPath = Path.Combine(Path.GetDirectoryName(rom), "roms");
             if (!Directory.Exists(romPath))
                 romPath = Path.Combine(Path.GetDirectoryName(rom), ".roms");
+            if (!Directory.Exists(romPath))
+                romPath = Path.Combine(AppConfig.GetFullPath("roms"), "vpinball", "roms");
+            if (!Directory.Exists(romPath))
+                romPath = Path.Combine(AppConfig.GetFullPath("roms"), "vpinball", ".roms");
             if (!Directory.Exists(romPath))
                 romPath = null;
 
@@ -87,21 +95,21 @@ namespace EmulatorLauncher
 
             SetupOptions(path, romPath, resolution);
 
-            List<string> commandArray = new List<string>();
+            var commands = new List<string>();
 
             if (_version >= new Version(10, 7, 0, 0))
-                commandArray.Add("-Minimized");
+                commands.Add("-ExtMinimized");
 
             if (_version >= new Version(10, 8, 0, 0))
             {
-                commandArray.Add("-Ini");
-                commandArray.Add(Path.ChangeExtension(exe, ".ini"));
+                commands.Add("-Ini");
+                commands.Add(Path.Combine(path, "VPinballX.ini"));
 
             }
-            commandArray.Add("-play");
-            commandArray.Add(rom);
+            commands.Add("-play");
+            commands.Add(rom);
 
-            string args = string.Join(" ", commandArray.Select(a => a.Contains(" ") ? "\"" + a + "\"" : a).ToArray());
+            string args = string.Join(" ", commands.Select(a => a.Contains(" ") ? "\"" + a + "\"" : a).ToArray());
 
             return new ProcessStartInfo()
             {
@@ -203,136 +211,6 @@ namespace EmulatorLauncher
             catch { }
         }
 
-
-        class DirectB2sData
-        {
-            public static DirectB2sData FromFile(string file)
-            {
-                if (!File.Exists(file))
-                    return null;
-
-
-                XmlDocument document = new XmlDocument();
-                document.Load(file);
-
-                XmlElement element = (XmlElement)document.SelectSingleNode("DirectB2SData");
-                if (element == null)
-                    return null;
-
-                var bulbs = new List<Bulb>();
-
-                foreach (XmlElement bulb in element.SelectNodes("Illumination/Bulb"))
-                {
-                    if (!bulb.HasAttribute("Parent") || bulb.GetAttribute("Parent") != "Backglass")
-                        continue;
-
-                    try
-                    {
-                        Bulb item = new Bulb();
-                        item.ID = bulb.GetAttribute("ID").ToInteger();
-                        item.LightColor = bulb.GetAttribute("LightColor");
-                        item.LocX = bulb.GetAttribute("LocX").ToInteger();
-                        item.LocY = bulb.GetAttribute("LocY").ToInteger();
-                        item.Width = bulb.GetAttribute("Width").ToInteger();
-                        item.Height = bulb.GetAttribute("Height").ToInteger();
-                        item.Visible = bulb.GetAttribute("Visible") == "1";
-                        item.IsImageSnippit = bulb.GetAttribute("IsImageSnippit") == "1";
-                        item.Image = Misc.Base64ToImage(bulb.GetAttribute("Image"));
-
-                        if (item.Visible && item.Image != null)
-                            bulbs.Add(item);
-                    }
-                    catch { }
-                }
-
-
-                XmlElement element13 = (XmlElement)element.SelectSingleNode("Images/BackglassImage");
-                if (element13 != null)
-                {
-                    try
-                    {
-                        var image = Misc.Base64ToImage(element13.Attributes["Value"].InnerText);
-                        if (image != null)
-                        {
-                            return new DirectB2sData()
-                            {
-                                Bulbs = bulbs.ToArray(),
-                                Image = image,
-                            };
-                        }
-                    }
-                    catch { }
-                }
-
-                return null;                
-            }
-
-            public Image RenderBackglass(int index = 0)
-            {
-                var bitmap = new Bitmap(Image);
-
-                using (Graphics g = Graphics.FromImage(bitmap))
-                {
-                    foreach (var bulb in Bulbs)
-                    {
-                        if (bulb.IsImageSnippit)
-                            continue;
-
-                        if (index == 0 && (bulb.ID & 1) == 0)
-                            continue;
-
-                        if (index == 1 && (bulb.ID & 1) == 1)
-                            continue;
-
-                        if (index == 3)
-                            continue;
-
-                        Color lightColor = Color.White;
-                        var split = bulb.LightColor.Split(new char[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
-                        if (split.Length == 3)
-                            lightColor = Color.FromArgb(split[0].ToInteger(), split[1].ToInteger(), split[2].ToInteger());
-
-                        using (ImageAttributes imageAttrs = new ImageAttributes())
-                        {
-                            var colorMatrix = new ColorMatrix(new float[][]
-                                    {
-                                        new float[] { lightColor.R / 255f, 0, 0, 0, 0 },
-                                        new float[] { 0, lightColor.G / 255f, 0, 0, 0 },
-                                        new float[] { 0, 0, lightColor.B / 255f, 0, 0 },
-                                        new float[] { 0, 0, 0, 1, 0 },
-                                        new float[] { 0, 0, 0, 0, 1 }
-                                    });
-
-                            imageAttrs.SetColorMatrix(colorMatrix);
-
-                            Rectangle dest = new Rectangle(bulb.LocX, bulb.LocY, bulb.Width, bulb.Height);
-                            g.DrawImage(bulb.Image, dest, 0, 0, bulb.Image.Width, bulb.Image.Height, GraphicsUnit.Pixel, imageAttrs, null, IntPtr.Zero);
-                        }
-                    }
-                }
-
-                return bitmap;
-            }
-
-            public Bulb[] Bulbs { get; private set; }
-            public Image Image { get; private set; }
-
-            public class Bulb
-            {
-                public int ID { get; set; }
-
-                public string LightColor { get; set; }
-                public int LocX { get; set; }
-                public int LocY { get; set; }
-                public int Width { get; set; }
-                public int Height { get; set; }
-                public bool Visible { get; set; }
-                public bool IsImageSnippit { get; set; }
-
-                public Image Image { get; set; }                
-            }
-        }
-
         private static LoadingForm ShowSplash(string rom)
         {
             if (rom == null)
@@ -346,8 +224,10 @@ namespace EmulatorLauncher
                 int last = Environment.TickCount;
                 int index = 0;
 
-                var frm = new LoadingForm();
-                frm.Image = data.RenderBackglass(index);
+                var frm = new LoadingForm
+                {
+                    Image = data.RenderBackglass(index)
+                };
                 frm.Timer += (a, b) =>
                     {
                         int now = Environment.TickCount;
@@ -370,8 +250,6 @@ namespace EmulatorLauncher
 
             return null;
         }
-
-      
 
         private static bool FileUrlValueExists(object value)
         {
@@ -417,6 +295,8 @@ namespace EmulatorLauncher
         {
             try
             {
+                SimpleLogger.Instance.Info("[Generator] Ensuring UltraDMD is registered.");
+
                 // Check for valid out-of-process COM server ( UltraDMD ) 
                 if (IsComServerAvailable(@"CLSID\{E1612654-304A-4E07-A236-EB64D6D4F511}\LocalServer32"))
                     return;
@@ -431,8 +311,10 @@ namespace EmulatorLauncher
 
                 if (File.Exists(ultraDMD))
                 {
-                    Process px = new Process();
-                    px.EnableRaisingEvents = true;
+                    Process px = new Process
+                    {
+                        EnableRaisingEvents = true
+                    };
                     px.StartInfo.Verb = "RunAs";
                     px.StartInfo.FileName = ultraDMD;
                     px.StartInfo.Arguments = " /i";
@@ -446,9 +328,9 @@ namespace EmulatorLauncher
             catch { }
         }
 
-        private static string ReadRegistryValue(RegistryKeyEx key, string path, string value)
+        private static string ReadRegistryValue(RegistryKeyEx key, string path, string value, RegistryViewEx view = RegistryViewEx.Registry32)
         {
-            var regKeyc = key.OpenSubKey(path, RegistryViewEx.Registry32);
+            var regKeyc = key.OpenSubKey(path, view);
             if (regKeyc != null)
             {
                 object pth = regKeyc.GetValue(value);
@@ -461,15 +343,15 @@ namespace EmulatorLauncher
             return null;
         }
 
-        private static bool ShouldRegisterBackglassServer(string path)
+        private bool ShouldRegisterBackglassServer(string path, RegistryViewEx view)
         {
-            try
+            try            
             {
                 var clsid = ReadRegistryValue(RegistryKeyEx.ClassesRoot, @"B2S.B2SPlayer\CLSID", null);
                 if (string.IsNullOrEmpty(clsid))
                     return true;
 
-                var codeBase = ReadRegistryValue(RegistryKeyEx.ClassesRoot, @"CLSID\" + clsid + @"\InprocServer32", "CodeBase");
+                var codeBase = ReadRegistryValue(RegistryKeyEx.ClassesRoot, @"CLSID\" + clsid + @"\InprocServer32", "CodeBase", view);
                 if (string.IsNullOrEmpty(codeBase))
                     return true;
                 
@@ -482,7 +364,7 @@ namespace EmulatorLauncher
                     return true;
 
                 // Version changed ?
-                var assembly = ReadRegistryValue(RegistryKeyEx.ClassesRoot, @"CLSID\" + clsid + @"\InprocServer32", "Assembly");
+                var assembly = ReadRegistryValue(RegistryKeyEx.ClassesRoot, @"CLSID\" + clsid + @"\InprocServer32", "Assembly", view);
                 var assemblyName = System.Reflection.AssemblyName.GetAssemblyName(localPath).FullName;
 
                 return assembly != assemblyName;
@@ -493,18 +375,24 @@ namespace EmulatorLauncher
             }
         }
 
-        private static void EnsureBackglassServerRegistered(string path)
+        private void EnsureBackglassServerRegistered(string path)
         {
+            var view = Kernel32.IsX64(_exe) ? RegistryViewEx.Registry64 : RegistryViewEx.Registry32;
+
             string dllPath = Path.Combine(path, "BackglassServer", "B2SBackglassServer.dll");
-            if (!ShouldRegisterBackglassServer(dllPath))
+            if (!ShouldRegisterBackglassServer(dllPath, view))
                 return;
 
             try
-            {            
-                Process px = new Process();
-                px.EnableRaisingEvents = true;
+            {
+                SimpleLogger.Instance.Info("[Generator] Ensuring BackGlass Server is registered.");
+
+                Process px = new Process
+                {
+                    EnableRaisingEvents = true
+                };
                 px.StartInfo.Verb = "RunAs";
-                px.StartInfo.FileName = Path.Combine(GetRegAsmPath(), "regasm.exe");
+                px.StartInfo.FileName = Path.Combine(GetRegAsmPath(view), "regasm.exe");
                 px.StartInfo.Arguments = "\"" + dllPath + "\" /codebase";
                 px.StartInfo.UseShellExecute = true;
                 px.StartInfo.CreateNoWindow = true;
@@ -515,12 +403,12 @@ namespace EmulatorLauncher
             catch { }
         }
 
-        private static string GetRegAsmPath()
+        private static string GetRegAsmPath(RegistryViewEx view = RegistryViewEx.Registry32)
         {
             string installRoot = string.Empty;
             string str2 = null;
 
-            RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\.NetFramework", false);
+            var key = RegistryKeyEx.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\.NetFramework", view);
             if (key != null)
             {
                 object oInstallRoot = key.GetValue("InstallRoot");
@@ -533,7 +421,7 @@ namespace EmulatorLauncher
             if (string.IsNullOrEmpty(installRoot))
                 return null;
 
-            key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\.NetFramework\Policy\v4.0", false);
+            key = RegistryKeyEx.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\.NetFramework\Policy\v4.0", view);
             if (key != null)
             {
                 string str3 = "v4.0";
@@ -553,11 +441,19 @@ namespace EmulatorLauncher
             return str2;
         }
 
-        private static bool ShouldRegisterVPinMame(string path)
+        private static bool ShouldRegisterVPinMame(string path, RegistryViewEx view)
         {
             try
             {
-                var dllPath = ReadRegistryValue(RegistryKeyEx.ClassesRoot, @"TypeLib\{57270B76-C846-4B1E-88D4-53C8337A0623}\1.0\0\win32", null);
+                var dll = RegistryKeyEx.GetRegistryValue( 
+                    view == RegistryViewEx.Registry64 ?
+                    @"HKEY_CLASSES_ROOT\TypeLib\{57270B76-C846-4B1E-88D4-53C8337A0623}\1.0\0\win64" :
+                    @"HKEY_CLASSES_ROOT\TypeLib\{57270B76-C846-4B1E-88D4-53C8337A0623}\1.0\0\win32", null, view);
+
+                if (dll == null)
+                    return true;
+
+                var dllPath = dll.ToString();
                 if (string.IsNullOrEmpty(dllPath))
                     return true;
 
@@ -577,18 +473,24 @@ namespace EmulatorLauncher
             }
         }
 
-        private static void EnsureVPinMameRegistered(string path)
+        private void EnsureVPinMameRegistered(string path)
         {
-            string dllPath = Path.Combine(path, "VPinMame", "VPinMAME.dll");
-            if (!ShouldRegisterVPinMame(dllPath))
+            RegistryViewEx view = Kernel32.IsX64(_exe) ? RegistryViewEx.Registry64 : RegistryViewEx.Registry32;
+
+            string dllPath = Path.Combine(path, "VPinMame", view == RegistryViewEx.Registry64 ? "VPinMAME64.dll" : "VPinMAME.dll");
+            if (!ShouldRegisterVPinMame(dllPath, view))
                 return;
 
             try
             {
-                Process px = new Process();
-                px.EnableRaisingEvents = true;
+                SimpleLogger.Instance.Info("[Generator] Ensuring VpinMame is registered.");
+
+                Process px = new Process
+                {
+                    EnableRaisingEvents = true
+                };
                 px.StartInfo.Verb = "RunAs";
-                px.StartInfo.FileName = Path.Combine(FileTools.GetSystemDirectory(), "regsvr32.exe");
+                px.StartInfo.FileName = Path.Combine(FileTools.GetSystemDirectory(view), "regsvr32.exe");
                 px.StartInfo.Arguments = "/s \"" + dllPath + "\"";
                 px.StartInfo.UseShellExecute = true;
                 px.StartInfo.CreateNoWindow = true;
@@ -601,18 +503,24 @@ namespace EmulatorLauncher
         private void SetupOptions(string path, string romPath, ScreenResolution resolution)
         {
             if (_version >= new Version(10, 8, 0, 0))
-                SetupOptionsIniFile(path, romPath, resolution);
+                SetupOptionsIniFile(path, resolution);
             else
-                SetupOptionsRegistry(path, romPath, resolution);
+                SetupOptionsRegistry(resolution);
+
+            SetupVPinMameOptions(path, romPath);
         }
 
-        private void SetupOptionsIniFile(string path, string romPath, ScreenResolution resolution)
+        private void SetupOptionsIniFile(string path, ScreenResolution resolution)
         {
             string iniFile = Path.Combine(path, "VPinballX.ini");
 
             using (var ini = new IniFile(iniFile, IniOptions.UseSpaces | IniOptions.KeepEmptyValues | IniOptions.KeepEmptyLines))
             {
-                if (Screen.AllScreens.Length >= 1 && SystemConfig["enableb2s"] != "0" && !SystemInformation.TerminalServerSession)
+                SimpleLogger.Instance.Info("[Generator] Writing config to VPinballX.ini file.");
+
+                if (Screen.AllScreens.Length > 1 && (!SystemConfig.isOptSet("enableb2s") || SystemConfig.getOptBoolean("enableb2s")) && !SystemInformation.TerminalServerSession)
+                    ini.WriteValue("Controller", "ForceDisableB2S", "0");
+                else if (SystemConfig.getOptBoolean("enableb2s"))
                     ini.WriteValue("Controller", "ForceDisableB2S", "0");
                 else
                     ini.WriteValue("Controller", "ForceDisableB2S", "1");
@@ -657,8 +565,6 @@ namespace EmulatorLauncher
                     ini.WriteValue("Player", "SyncMode", "3");
 
                 // Video options
-                ini.WriteValue("Player", "BallReflection", SystemConfig["vp_ballreflection"] == "1" ? "1" : "0");
-
                 if (SystemConfig.isOptSet("vp_ambient_occlusion") && SystemConfig["vp_ambient_occlusion"] == "dynamic")
                 {
                     ini.WriteValue("Player", "DisableAO", "0");
@@ -674,8 +580,10 @@ namespace EmulatorLauncher
                 ini.WriteValue("Player", "FXAA", SystemConfig.GetValueOrDefault("vp_antialiasing", "0"));
                 ini.WriteValue("Player", "Sharpen", SystemConfig.GetValueOrDefault("vp_sharpen", "0"));
                 
-                ini.WriteValue("Player", "BGSet", SystemConfig["arcademode"] == "1" ? "1" : "0");
-                ini.WriteValue("Player", "ForceAnisotropicFiltering", SystemConfig.getOptBoolean("vp_anisotropic_filtering") ? "0" : "1");
+                ini.WriteValue("Player", "BGSet", SystemConfig.getOptBoolean("arcademode") ? "1" : "0");
+
+                bool aniFilter = !SystemConfig.isOptSet("vp_anisotropic_filtering") || SystemConfig.getOptBoolean("vp_anisotropic_filtering");
+                ini.WriteValue("Player", "ForceAnisotropicFiltering", aniFilter ? "1" : "0");
                 ini.WriteValue("Player", "UseNVidiaAPI", SystemConfig.getOptBoolean("vp_nvidia") ? "1" : "0");
                 ini.WriteValue("Player", "SoftwareVertexProcessing", SystemConfig.getOptBoolean("vp_vertex") ? "1" : "0");
 
@@ -683,11 +591,14 @@ namespace EmulatorLauncher
                 ini.WriteValue("Player", "PlayMusic", SystemConfig.getOptBoolean("vp_music_off") ? "0" : "1");
 
                 // Controls
-                ini.WriteValue("Player", "LRAxis", SystemConfig["nouse_joyaxis"] == "1" ? "0" : "1");
-                ini.WriteValue("Player", "UDAxis", SystemConfig["nouse_joyaxis"] == "1" ? "0" : "2");
-                ini.WriteValue("Player", "PlungerAxis", SystemConfig["nouse_joyaxis"] == "1" ? "0" : "3");
 
-                ini.WriteValue("Player", "DeadZone", SystemConfig.GetValueOrDefault("joy_deadzone", "15"));
+                if (!SystemConfig.getOptBoolean("disableautocontrollers"))
+                {
+                    ini.WriteValue("Player", "LRAxis", SystemConfig.getOptBoolean("nouse_joyaxis") ? "0" : "1");
+                    ini.WriteValue("Player", "UDAxis", SystemConfig.getOptBoolean("nouse_joyaxis") ? "0" : "2");
+                    ini.WriteValue("Player", "PlungerAxis", SystemConfig.getOptBoolean("nouse_joyaxis") ? "0" : "3");
+                    BindIniFeatureSlider(ini, "Player", "DeadZone", "joy_deadzone", "15");
+                }
 
                 ini.WriteValue("Editor", "WindowTop", (Screen.PrimaryScreen.Bounds.Height / 2 - 300).ToString());
                 ini.WriteValue("Editor", "WindowBottom", (Screen.PrimaryScreen.Bounds.Height / 2 + 300).ToString());
@@ -699,7 +610,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void SetupOptionsRegistry(string path, string romPath, ScreenResolution resolution)
+        private void SetupOptionsRegistry(ScreenResolution resolution)
         {
             //HKEY_CURRENT_USER\Software\Visual Pinball\VP10\Player
 
@@ -712,7 +623,9 @@ namespace EmulatorLauncher
             regKeyc = vp.CreateSubKey("Controller");
             if (regKeyc != null)
             {
-                if (Screen.AllScreens.Length >= 1 && SystemConfig["enableb2s"] != "0" && !SystemInformation.TerminalServerSession)
+                SimpleLogger.Instance.Info("[Generator] Writing config to registry.");
+
+                if (Screen.AllScreens.Length > 1 && (!SystemConfig.isOptSet("enableb2s") || SystemConfig.getOptBoolean("enableb2s")) && !SystemInformation.TerminalServerSession)
                     SetOption(regKeyc, "ForceDisableB2S", 0);
                 else
                     SetOption(regKeyc, "ForceDisableB2S", 1);
@@ -791,8 +704,10 @@ namespace EmulatorLauncher
                 else
                     SetOption(regKeyc, "FXAA", 0);
 
-                SetOption(regKeyc, "BGSet", SystemConfig["arcademode"] == "1" ? 1 : 0);
-                SetOption(regKeyc, "ForceAnisotropicFiltering", SystemConfig.getOptBoolean("vp_anisotropic_filtering") ? 0 : 1);
+                SetOption(regKeyc, "BGSet", SystemConfig.getOptBoolean("arcademode") ? 1 : 0);
+
+                bool aniFilter = !SystemConfig.isOptSet("vp_anisotropic_filtering") || SystemConfig.getOptBoolean("vp_anisotropic_filtering");
+                SetOption(regKeyc, "ForceAnisotropicFiltering", aniFilter ? 1 : 0);
                 SetOption(regKeyc, "UseNVidiaAPI", SystemConfig.getOptBoolean("vp_nvidia") ? 1 : 0);
                 SetOption(regKeyc, "SoftwareVertexProcessing", SystemConfig.getOptBoolean("vp_vertex") ? 1 : 0);
 
@@ -800,17 +715,19 @@ namespace EmulatorLauncher
                 SetOption(regKeyc, "PlayMusic", SystemConfig.getOptBoolean("vp_music_off") ? 0 : 1);
 
                 // Controls
-                SetOption(regKeyc, "LRAxis", SystemConfig["nouse_joyaxis"] == "1" ? 0 : 1);
-                SetOption(regKeyc, "UDAxis", SystemConfig["nouse_joyaxis"] == "1" ? 0 : 2);
-                SetOption(regKeyc, "PlungerAxis", SystemConfig["nouse_joyaxis"] == "1" ? 0 : 3);
+                if (!SystemConfig.getOptBoolean("disableautocontrollers"))
+                {
+                    SetOption(regKeyc, "LRAxis", SystemConfig.getOptBoolean("nouse_joyaxis") ? 0 : 1);
+                    SetOption(regKeyc, "UDAxis", SystemConfig.getOptBoolean("nouse_joyaxis") ? 0 : 2);
+                    SetOption(regKeyc, "PlungerAxis", SystemConfig.getOptBoolean("nouse_joyaxis") ? 0 : 3);
 
-                int deadzone = 15;
+                    int deadzone = 15;
 
-                if (SystemConfig.isOptSet("joy_deadzone") && !string.IsNullOrEmpty(SystemConfig["joy_deadzone"]))
-                    deadzone = SystemConfig["joy_deadzone"].ToInteger();
-                
-                SetOption(regKeyc, "DeadZone", deadzone);
+                    if (SystemConfig.isOptSet("joy_deadzone") && !string.IsNullOrEmpty(SystemConfig["joy_deadzone"]))
+                        deadzone = SystemConfig["joy_deadzone"].ToIntegerString().ToInteger();
 
+                    SetOption(regKeyc, "DeadZone", deadzone);
+                }
                 regKeyc.Close();
             }
 
@@ -828,86 +745,92 @@ namespace EmulatorLauncher
 
             vp10.Close();
             vp.Close();
-
-            SetupVPinMameOptions(path, romPath);
         }
 
         private static void SetupVPinMameOptions(string path, string romPath)
         {
-            string vPinMamePath = Path.Combine(path, "VPinMAME");
-
-            RegistryKey regKeyc = Registry.CurrentUser.OpenSubKey(@"Software", true);
-            if (regKeyc != null)
+            var softwareKey = Registry.CurrentUser.OpenSubKey(@"Software", true);
+            if (softwareKey == null)
+                return;
+            
+            var visualPinMame = softwareKey.CreateSubKey("Freeware").CreateSubKey("Visual PinMame");
+            if (visualPinMame != null)
             {
-                RegistryKey visualPinMame = regKeyc.CreateSubKey("Freeware").CreateSubKey("Visual PinMame");
-                if (visualPinMame == null)
-                    return;
-
-                regKeyc = visualPinMame.CreateSubKey("globals");
+                SimpleLogger.Instance.Info("[Generator] Writing VPinMame config to Registry.");
 
                 DisableVPinMameLicenceDialogs(romPath, visualPinMame);
+
+                visualPinMame.CreateSubKey("default");
+                
+                var globalKey = visualPinMame.CreateSubKey("globals");
+                if (globalKey != null)
+                {
+                    string vPinMamePath = Path.Combine(path, "VPinMAME");
+
+                    SetOption(globalKey, "rompath", string.IsNullOrEmpty(romPath) ? Path.Combine(vPinMamePath, "roms") : romPath);
+
+                    SetOption(globalKey, "artwork_directory", Path.Combine(vPinMamePath, "artwork"));
+                    SetOption(globalKey, "cfg_directory", Path.Combine(vPinMamePath, "cfg"));
+                    SetOption(globalKey, "cheat_file", Path.Combine(vPinMamePath, "cheat.dat"));
+                    SetOption(globalKey, "cpu_affinity_mask", 0);
+                    SetOption(globalKey, "diff_directory", Path.Combine(vPinMamePath, "diff"));
+                    SetOption(globalKey, "hiscore_directory", Path.Combine(vPinMamePath, "hi"));
+                    SetOption(globalKey, "history_file", Path.Combine(vPinMamePath, "history.dat"));
+                    SetOption(globalKey, "input_directory", Path.Combine(vPinMamePath, "inp"));
+                    SetOption(globalKey, "joystick", 0);
+                    SetOption(globalKey, "low_latency_throttle", 0);
+                    SetOption(globalKey, "mameinfo_file", Path.Combine(vPinMamePath, "mameinfo.dat"));
+                    SetOption(globalKey, "memcard_directory", Path.Combine(vPinMamePath, "memcard"));
+                    SetOption(globalKey, "mouse", 0);
+                    SetOption(globalKey, "nvram_directory", Path.Combine(vPinMamePath, "nvram"));
+                    SetOption(globalKey, "samplepath", Path.Combine(vPinMamePath, "samples"));
+                    SetOption(globalKey, "screen", "");
+                    SetOption(globalKey, "snapshot_directory", Path.Combine(vPinMamePath, "snap"));
+                    SetOption(globalKey, "state_directory", Path.Combine(vPinMamePath, "sta"));
+                    SetOption(globalKey, "steadykey", 1);
+                    SetOption(globalKey, "wave_directory", Path.Combine(vPinMamePath, "wave"));
+                    SetOption(globalKey, "window", 1);
+
+                    globalKey.Close();
+                }
             }
 
-            if (regKeyc != null)
-            {
-                SetOption(regKeyc, "rompath", string.IsNullOrEmpty(romPath) ? Path.Combine(vPinMamePath, "roms") : romPath);
-
-                SetOption(regKeyc, "nvram_directory", Path.Combine(vPinMamePath, "nvram"));
-                SetOption(regKeyc, "snapshot_directory", Path.Combine(vPinMamePath, "snap"));
-                SetOption(regKeyc, "samplepath", Path.Combine(vPinMamePath, "samples"));
-                SetOption(regKeyc, "state_directory", Path.Combine(vPinMamePath, "sta"));
-                SetOption(regKeyc, "wave_directory", Path.Combine(vPinMamePath, "wave"));
-                SetOption(regKeyc, "memcard_directory", Path.Combine(vPinMamePath, "memcard"));
-                SetOption(regKeyc, "artwork_directory", Path.Combine(vPinMamePath, "artwork"));
-                SetOption(regKeyc, "cfg_directory", Path.Combine(vPinMamePath, "cfg"));
-                SetOption(regKeyc, "diff_directory", Path.Combine(vPinMamePath, "diff"));
-                SetOption(regKeyc, "hiscore_directory", Path.Combine(vPinMamePath, "hi"));
-                SetOption(regKeyc, "input_directory", Path.Combine(vPinMamePath, "inp"));
-                SetOption(regKeyc, "mameinfo_file", Path.Combine(vPinMamePath, "mameinfo.dat"));
-                SetOption(regKeyc, "cheat_file", Path.Combine(vPinMamePath, "cheat.dat"));
-                SetOption(regKeyc, "history_file", Path.Combine(vPinMamePath, "history.dat"));
-
-                regKeyc.Close();
-            }
+            softwareKey.Close();
         }
 
         private static void DisableVPinMameLicenceDialogs(string romPath, RegistryKey visualPinMame)
         {
-            if (romPath == null)
+            if (romPath == null || !Directory.Exists(romPath))
                 return;
 
-            string[] romList = Directory.GetFiles(romPath, "*.zip");
+            SimpleLogger.Instance.Info("[Generator] Disabling VPinMame Licence prompts for all available table roms.");
+
+            string[] romList = Directory.GetFiles(romPath, "*.zip").Select(r => Path.GetFileNameWithoutExtension(r)).Distinct().ToArray();
             foreach (var rom in romList)
             {
-                RegistryKey romKey = visualPinMame.OpenSubKey(Path.GetFileNameWithoutExtension(rom), true);
+                var romKey = visualPinMame.OpenSubKey(rom, true);
                 if (romKey == null)
                 {
-                    romKey = visualPinMame.CreateSubKey(Path.GetFileNameWithoutExtension(rom));
-                    if (romKey != null)
-                    {
-                        romKey.SetValue(null, 1);
-                        romKey.SetValue("cabinet_mode", 1);
-                        romKey.Close();
-                    }
+                    romKey = visualPinMame.CreateSubKey(rom);
+                    romKey?.SetValue(null, 1);
                 }
-                else
+                
+                if (romKey != null)
                 {
                     romKey.SetValue("cabinet_mode", 1);
+                    romKey.SetValue("skip_disclaimer", 1);
+                    romKey.SetValue("skip_gameinfo", 1);
+
                     romKey.Close();
                 }
             }
         }
-
-        private static Dictionary<string, object> _oldValues = new Dictionary<string, object>();
 
         private static void SetOption(RegistryKey regKeyc, string name, object value)
         {
             object o = regKeyc.GetValue(name);
             if (object.Equals(value, o))
                 return;
-
-            if (o != null)
-                _oldValues[name] = o;
 
             regKeyc.SetValue(name, value);
         }
@@ -921,27 +844,134 @@ namespace EmulatorLauncher
             regKeyc.SetValue(name, value);
         }
 
-        private static void RestoreOptions(string path)
+        class DirectB2sData
         {
-            if (_oldValues.Count == 0)
-                return;
-
-            RegistryKey regKeyc = Registry.CurrentUser.OpenSubKey(@"Software\Freeware\Visual PinMame\globals", true);
-            if (regKeyc != null)
+            public static DirectB2sData FromFile(string file)
             {
-                foreach (var key in _oldValues)
+                if (!File.Exists(file))
+                    return null;
+
+
+                XmlDocument document = new XmlDocument();
+                document.Load(file);
+
+                XmlElement element = (XmlElement)document.SelectSingleNode("DirectB2SData");
+                if (element == null)
+                    return null;
+
+                var bulbs = new List<Bulb>();
+
+                foreach (XmlElement bulb in element.SelectNodes("Illumination/Bulb"))
                 {
+                    if (!bulb.HasAttribute("Parent") || bulb.GetAttribute("Parent") != "Backglass")
+                        continue;
+
                     try
                     {
-                        if (key.Value == null)
-                            regKeyc.DeleteValue(key.Key);
-                        else
-                            regKeyc.SetValue(key.Key, key.Value);
+                        Bulb item = new Bulb
+                        {
+                            ID = bulb.GetAttribute("ID").ToInteger(),
+                            LightColor = bulb.GetAttribute("LightColor"),
+                            LocX = bulb.GetAttribute("LocX").ToInteger(),
+                            LocY = bulb.GetAttribute("LocY").ToInteger(),
+                            Width = bulb.GetAttribute("Width").ToInteger(),
+                            Height = bulb.GetAttribute("Height").ToInteger(),
+                            Visible = bulb.GetAttribute("Visible") == "1",
+                            IsImageSnippit = bulb.GetAttribute("IsImageSnippit") == "1",
+                            Image = Misc.Base64ToImage(bulb.GetAttribute("Image"))
+                        };
+
+                        if (item.Visible && item.Image != null)
+                            bulbs.Add(item);
                     }
                     catch { }
                 }
 
-                regKeyc.Close();
+
+                XmlElement element13 = (XmlElement)element.SelectSingleNode("Images/BackglassImage");
+                if (element13 != null)
+                {
+                    try
+                    {
+                        var image = Misc.Base64ToImage(element13.Attributes["Value"].InnerText);
+                        if (image != null)
+                        {
+                            return new DirectB2sData()
+                            {
+                                Bulbs = bulbs.ToArray(),
+                                Image = image,
+                            };
+                        }
+                    }
+                    catch { }
+                }
+
+                return null;
+            }
+
+            public Image RenderBackglass(int index = 0)
+            {
+                var bitmap = new Bitmap(Image);
+
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    foreach (var bulb in Bulbs)
+                    {
+                        if (bulb.IsImageSnippit)
+                            continue;
+
+                        if (index == 0 && (bulb.ID & 1) == 0)
+                            continue;
+
+                        if (index == 1 && (bulb.ID & 1) == 1)
+                            continue;
+
+                        if (index == 3)
+                            continue;
+
+                        Color lightColor = Color.White;
+                        var split = bulb.LightColor.Split(new char[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (split.Length == 3)
+                            lightColor = Color.FromArgb(split[0].ToInteger(), split[1].ToInteger(), split[2].ToInteger());
+
+                        using (ImageAttributes imageAttrs = new ImageAttributes())
+                        {
+                            var colorMatrix = new ColorMatrix(new float[][]
+                                    {
+                                        new float[] { lightColor.R / 255f, 0, 0, 0, 0 },
+                                        new float[] { 0, lightColor.G / 255f, 0, 0, 0 },
+                                        new float[] { 0, 0, lightColor.B / 255f, 0, 0 },
+                                        new float[] { 0, 0, 0, 1, 0 },
+                                        new float[] { 0, 0, 0, 0, 1 }
+                                    });
+
+                            imageAttrs.SetColorMatrix(colorMatrix);
+
+                            Rectangle dest = new Rectangle(bulb.LocX, bulb.LocY, bulb.Width, bulb.Height);
+                            g.DrawImage(bulb.Image, dest, 0, 0, bulb.Image.Width, bulb.Image.Height, GraphicsUnit.Pixel, imageAttrs, null, IntPtr.Zero);
+                        }
+                    }
+                }
+
+                return bitmap;
+            }
+
+            public Bulb[] Bulbs { get; private set; }
+            public Image Image { get; private set; }
+
+            public class Bulb
+            {
+                public int ID { get; set; }
+
+                public string LightColor { get; set; }
+                public int LocX { get; set; }
+                public int LocY { get; set; }
+                public int Width { get; set; }
+                public int Height { get; set; }
+                public bool Visible { get; set; }
+                public bool IsImageSnippit { get; set; }
+
+                public Image Image { get; set; }
             }
         }
     }

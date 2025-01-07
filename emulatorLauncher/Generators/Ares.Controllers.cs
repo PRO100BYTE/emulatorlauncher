@@ -1,17 +1,22 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using EmulatorLauncher.Common;
 using EmulatorLauncher.Common.FileFormats;
 using EmulatorLauncher.Common.EmulationStation;
+using EmulatorLauncher.Common.Joysticks;
 
 namespace EmulatorLauncher
 {
     partial class AresGenerator : Generator
     {
-        private void CreateControllerConfiguration(BmlFile bml, string path)
+        private void CreateControllerConfiguration(BmlFile bml)
         {
             if (Program.SystemConfig.isOptSet("disableautocontrollers") && Program.SystemConfig["disableautocontrollers"] == "1")
                 return;
+
+            SimpleLogger.Instance.Info("[INFO] Creating controller configuration for Ares");
 
             // clear existing pad sections of file
             for (int i = 1; i < 6; i++)
@@ -89,47 +94,215 @@ namespace EmulatorLauncher
             if (joy == null)
                 return;
 
-            string tech = ctrl.IsXInputDevice ? "xinput" : "SDL";
+            var input = bml.GetOrCreateContainer("Input");
+
+            bool switchTriggers = (_system == "n64" || _system == "n64dd") && (!SystemConfig.isOptSet("ares64_inputprofile") || SystemConfig["ares64_inputprofile"] == "zl");
+            bool xboxLayout = (_system == "n64" || _system == "n64dd") && (SystemConfig.isOptSet("ares64_inputprofile") && SystemConfig["ares64_inputprofile"] == "xbox");
+
+            string guid = ctrl.Guid.ToLowerInvariant();
 
             var vpad = bml.GetOrCreateContainer("VirtualPad" + playerindex);
-            int index = 0x3 + (ctrl.DeviceIndex* 100000000);
-            string padId = "0x" + index + "/";
+            
+            string prodID = ctrl.DirectInput.ProductId.ToString("X4").ToLowerInvariant();
+            string vendorID = ctrl.DirectInput.VendorId.ToString("X4").ToLowerInvariant();
+            string padId = "0x";
+            
+            int index = ctrl.DeviceIndex;
 
-            vpad["Pad.Up"] = GetInputKeyName(ctrl, InputKey.up, padId, tech);
-            vpad["Pad.Down"] = GetInputKeyName(ctrl, InputKey.down, padId, tech);
-            vpad["Pad.Left"] = GetInputKeyName(ctrl, InputKey.left, padId, tech);
-            vpad["Pad.Right"] = GetInputKeyName(ctrl, InputKey.right, padId, tech);
-            vpad["Select"] = GetInputKeyName(ctrl, InputKey.select, padId, tech);
-            vpad["Start"] = GetInputKeyName(ctrl, InputKey.start, padId, tech);
-            vpad["A..South"] = GetInputKeyName(ctrl, InputKey.a, padId, tech);
-            vpad["B..East"] = GetInputKeyName(ctrl, InputKey.b, padId, tech);
-            vpad["X..West"] = GetInputKeyName(ctrl, InputKey.y, padId, tech);
-            vpad["Y..North"] = GetInputKeyName(ctrl, InputKey.x, padId, tech);
-            vpad["L-Bumper"] = GetInputKeyName(ctrl, InputKey.pageup, padId, tech);
-            vpad["R-Bumper"] = GetInputKeyName(ctrl, InputKey.pagedown, padId, tech);
-            vpad["L-Trigger"] = GetInputKeyName(ctrl, InputKey.l2, padId, tech);
-            vpad["R-Trigger"] = GetInputKeyName(ctrl, InputKey.r2, padId, tech);
-            vpad["L-Stick..Click"] = GetInputKeyName(ctrl, InputKey.l3, padId, tech);
-            vpad["R-Stick..Click"] = GetInputKeyName(ctrl, InputKey.r3, padId, tech);
-            vpad["L-Up"] = GetInputKeyName(ctrl, InputKey.leftanalogup, padId, tech);
-            vpad["L-Down"] = GetInputKeyName(ctrl, InputKey.leftanalogdown, padId, tech);
-            vpad["L-Left"] = GetInputKeyName(ctrl, InputKey.leftanalogleft, padId, tech);
-            vpad["L-Right"] = GetInputKeyName(ctrl, InputKey.leftanalogright, padId, tech);
-            vpad["R-Up"] = GetInputKeyName(ctrl, InputKey.rightanalogup, padId, tech);
-            vpad["R-Down"] = GetInputKeyName(ctrl, InputKey.rightanalogdown, padId, tech);
-            vpad["R-Left"] = GetInputKeyName(ctrl, InputKey.rightanalogleft, padId, tech);
-            vpad["R-Right"] = GetInputKeyName(ctrl, InputKey.rightanalogright, padId, tech);
+            if (index == 0)
+                padId = padId + vendorID + prodID + "/";
+            else
+                padId = padId + index + vendorID + prodID + "/";
+
+            #region specialControllers
+            // Special treatment for N64 controllers
+            string n64json = Path.Combine(AppConfig.GetFullPath("retrobat"), "system", "resources", "inputmapping", "n64Controllers.json");
+            bool needn64ActivationSwitch = false;
+            bool n64_pad = Program.SystemConfig.getOptBoolean("n64_pad");
+
+            if (File.Exists(n64json) && _n64Systems.Contains(_system))
+            {
+                try
+                {
+                    var n64Controllers = N64Controller.LoadControllersFromJson(n64json);
+
+                    if (n64Controllers != null)
+                    {
+                        N64Controller n64Gamepad = N64Controller.GetN64Controller("ares", guid, n64Controllers);
+                        if (n64Gamepad != null)
+                        {
+                            if (n64Gamepad.ControllerInfo != null)
+                            {
+                                if (n64Gamepad.ControllerInfo.ContainsKey("needActivationSwitch"))
+                                    needn64ActivationSwitch = n64Gamepad.ControllerInfo["needActivationSwitch"] == "yes";
+
+                                if (needn64ActivationSwitch && !n64_pad)
+                                {
+                                    SimpleLogger.Instance.Info("[Controller] Specific n64 mapping needs to be activated for this controller.");
+                                    goto Bypassn64Controllers;
+                                }
+                            }
+
+                            SimpleLogger.Instance.Info("[Controller] Performing specific mapping for " + n64Gamepad.Name);
+
+                            foreach (var button in n64Gamepad.Mapping)
+                                vpad[button.Key] = padId + button.Value + ";;";
+
+                            SimpleLogger.Instance.Info("[INFO] Assigned controller " + ctrl.DevicePath + " to player : " + ctrl.PlayerIndex.ToString());
+
+                            return;
+                        }
+                        else
+                            SimpleLogger.Instance.Info("[Controller] No specific mapping found for N64 controller.");
+                    }
+                    else
+                        SimpleLogger.Instance.Info("[Controller] Error loading JSON file.");
+                }
+                catch { }
+            }
+
+            Bypassn64Controllers:
+
+            bool needMDActivationSwitch = false;
+            bool md_pad = Program.SystemConfig.getOptBoolean("md_pad");
+            if (_mdSystems.Contains(_system) && SystemConfig.getOptBoolean("md_pad"))
+            {
+                string mdjson = Path.Combine(AppConfig.GetFullPath("retrobat"), "system", "resources", "inputmapping", "mdControllers.json");
+                try
+                {
+                    var mdControllers = MegadriveController.LoadControllersFromJson(mdjson);
+
+                    if (mdControllers != null)
+                    {
+                        MegadriveController mdGamepad = MegadriveController.GetMDController("ares", guid, mdControllers);
+
+                        if (mdGamepad != null)
+                        {
+                            if (mdGamepad.ControllerInfo != null)
+                            {
+                                if (mdGamepad.ControllerInfo.ContainsKey("needActivationSwitch"))
+                                    needMDActivationSwitch = mdGamepad.ControllerInfo["needActivationSwitch"] == "yes";
+
+                                if (needMDActivationSwitch && !md_pad)
+                                {
+                                    SimpleLogger.Instance.Info("[Controller] Specific megadrive mapping needs to be activated for this controller.");
+                                    goto BypassMDControllers;
+                                }
+                            }
+                            SimpleLogger.Instance.Info("[Controller] Performing specific mapping for " + mdGamepad.Name);
+
+                            if (mdGamepad.Mapping != null)
+                            {
+                                foreach (var button in mdGamepad.Mapping)
+                                {
+                                    if (button.Value.Contains("_"))
+                                    {
+                                        var buttons = button.Value.Split('_');
+                                        string button1 = buttons[0];
+                                        string button2 = buttons[1];
+                                        vpad[button.Key] = padId + button1 + ";" + padId + button2 + ";";
+                                    }
+                                    else
+                                        vpad[button.Key] = padId + button.Value + ";;";
+                                }
+
+                                if (mdGamepad.Driver != null)
+                                    input["Driver"] = mdGamepad.Driver;
+
+                                SimpleLogger.Instance.Info("[INFO] Assigned controller " + ctrl.DevicePath + " to player : " + ctrl.PlayerIndex.ToString());
+                            }
+
+                            return;
+                        }
+                        else
+                            SimpleLogger.Instance.Info("[Controller] No specific mapping found for megadrive controller.");
+                    }
+                    else
+                        SimpleLogger.Instance.Info("[Controller] Error loading JSON file.");
+                }
+                catch { }
+            }
+
+            BypassMDControllers:
+            #endregion
+
+            vpad["Pad.Up"] = GetInputKeyName(ctrl, InputKey.up, padId);
+            vpad["Pad.Down"] = GetInputKeyName(ctrl, InputKey.down, padId);
+            vpad["Pad.Left"] = GetInputKeyName(ctrl, InputKey.left, padId);
+            vpad["Pad.Right"] = GetInputKeyName(ctrl, InputKey.right, padId);
+            vpad["Select"] = GetInputKeyName(ctrl, InputKey.select, padId);
+            vpad["Start"] = GetInputKeyName(ctrl, InputKey.start, padId);
+            if (_system == "mastersystem" && SystemConfig.getOptBoolean("rotate_buttons"))
+            {
+                vpad["A..South"] = GetInputKeyName(ctrl, InputKey.y, padId);
+                vpad["B..East"] = GetInputKeyName(ctrl, InputKey.a, padId);
+                vpad["X..West"] = GetInputKeyName(ctrl, InputKey.x, padId);
+                vpad["Y..North"] = GetInputKeyName(ctrl, InputKey.b, padId);
+            }
+            else if (SystemConfig.getOptBoolean("rotate_buttons"))
+            {
+                vpad["A..South"] = GetInputKeyName(ctrl, InputKey.b, padId);
+                vpad["B..East"] = GetInputKeyName(ctrl, InputKey.x, padId);
+                vpad["X..West"] = GetInputKeyName(ctrl, InputKey.a, padId);
+                vpad["Y..North"] = GetInputKeyName(ctrl, InputKey.y, padId);
+            }
+            else if (SystemConfig.getOptBoolean("buttonsInvert"))
+            {
+                vpad["A..South"] = GetInputKeyName(ctrl, InputKey.b, padId);
+                vpad["B..East"] = GetInputKeyName(ctrl, InputKey.a, padId);
+                vpad["X..West"] = GetInputKeyName(ctrl, InputKey.x, padId);
+                vpad["Y..North"] = GetInputKeyName(ctrl, InputKey.y, padId);
+            }
+            else if (xboxLayout)
+            {
+                vpad["A..South"] = GetInputKeyName(ctrl, InputKey.a, padId);
+                vpad["B..East"] = GetInputKeyName(ctrl, InputKey.y, padId);
+                vpad["X..West"] = GetInputKeyName(ctrl, InputKey.b, padId);
+                vpad["Y..North"] = GetInputKeyName(ctrl, InputKey.x, padId);
+            }
+            else
+            {
+                vpad["A..South"] = GetInputKeyName(ctrl, InputKey.a, padId);
+                vpad["B..East"] = GetInputKeyName(ctrl, InputKey.b, padId);
+                vpad["X..West"] = GetInputKeyName(ctrl, InputKey.y, padId);
+                vpad["Y..North"] = GetInputKeyName(ctrl, InputKey.x, padId);
+            }
+            vpad["L-Bumper"] = GetInputKeyName(ctrl, InputKey.pageup, padId);
+            vpad["R-Bumper"] = GetInputKeyName(ctrl, InputKey.pagedown, padId);
+
+            if (switchTriggers)
+            {
+                vpad["L-Trigger"] = GetInputKeyName(ctrl, InputKey.r2, padId);
+                vpad["R-Trigger"] = GetInputKeyName(ctrl, InputKey.l2, padId);
+            }
+            else
+            {
+                vpad["L-Trigger"] = GetInputKeyName(ctrl, InputKey.l2, padId);
+                vpad["R-Trigger"] = GetInputKeyName(ctrl, InputKey.r2, padId);
+            }
+
+            vpad["L-Stick..Click"] = GetInputKeyName(ctrl, InputKey.l3, padId);
+            vpad["R-Stick..Click"] = GetInputKeyName(ctrl, InputKey.r3, padId);
+            vpad["L-Up"] = GetInputKeyName(ctrl, InputKey.leftanalogup, padId);
+            vpad["L-Down"] = GetInputKeyName(ctrl, InputKey.leftanalogdown, padId);
+            vpad["L-Left"] = GetInputKeyName(ctrl, InputKey.leftanalogleft, padId);
+            vpad["L-Right"] = GetInputKeyName(ctrl, InputKey.leftanalogright, padId);
+            vpad["R-Up"] = GetInputKeyName(ctrl, InputKey.rightanalogup, padId);
+            vpad["R-Down"] = GetInputKeyName(ctrl, InputKey.rightanalogdown, padId);
+            vpad["R-Left"] = GetInputKeyName(ctrl, InputKey.rightanalogleft, padId);
+            vpad["R-Right"] = GetInputKeyName(ctrl, InputKey.rightanalogright, padId);
+
+            SimpleLogger.Instance.Info("[INFO] Assigned controller " + ctrl.DevicePath + " to player : " + ctrl.PlayerIndex.ToString());
         }
 
-        private static string GetInputKeyName(Controller c, InputKey key, string padId, string tech)
+        private static string GetInputKeyName(Controller c, InputKey key, string padId)
         {
-            Int64 pid = -1;
+            Int64 pid;
 
             // If controller is nintendo, A/B and X/Y are reversed
             //bool revertbuttons = (c.VendorID == VendorId.USB_VENDOR_NINTENDO);
 
-            bool revertAxis = false;
-            key = key.GetRevertedAxis(out revertAxis);
+            key = key.GetRevertedAxis(out bool revertAxis);
 
             var input = c.Config[key];
             if (input != null)
@@ -285,7 +458,7 @@ namespace EmulatorLauncher
             return ";;";
         }
 
-        static List<string> virtualPadButtons = new List<string>() 
+        static readonly List<string> virtualPadButtons = new List<string>() 
         {
             "Pad.Up", "Pad.Down", "Pad.Left", "Pad.Right",
             "Select", "Start", "A..South", "B..East", "X..West", "Y..North",
@@ -293,7 +466,7 @@ namespace EmulatorLauncher
             "L-Up", "L-Down", "L-Left", "L-Right", "R-Up", "R-Down", "R-Left", "R-Right"
         };
 
-        static List<string> mouseButtons = new List<string>()
+        static readonly List<string> mouseButtons = new List<string>()
         {
             "X", "Y", "Left", "Middle", "Right", "Extra"
         };

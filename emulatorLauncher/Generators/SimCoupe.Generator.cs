@@ -22,14 +22,15 @@ namespace EmulatorLauncher
                 return null;
 
             var platform = ReshadeManager.GetPlatformFromFile(exe);
-            if (!ReshadeManager.Setup(ReshadeBezelType.dxgi, platform, system, rom, path, resolution))
-                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution);
+            if (!ReshadeManager.Setup(ReshadeBezelType.dxgi, platform, system, rom, path, resolution, emulator))
+                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
 
             _resolution = resolution;
             
-            List<string> commandArray = new List<string>();
-
-            commandArray.Add(rom);
+            List<string> commandArray = new List<string>
+            {
+                rom
+            };
             commandArray.AddRange(new string[] { "-drive1", "1" });
             commandArray.AddRange(new string[] { "-drive2", "0" });            
             commandArray.AddRange(new string[] { "-autoload", "yes" });
@@ -77,8 +78,9 @@ namespace EmulatorLauncher
 
             int ret = base.RunAndWait(path);
 
-            if (bezel != null)
-                bezel.Dispose();
+            bezel?.Dispose();
+
+            ReshadeManager.UninstallReshader(ReshadeBezelType.dxgi, path.WorkingDirectory);
 
             return ret;
         }

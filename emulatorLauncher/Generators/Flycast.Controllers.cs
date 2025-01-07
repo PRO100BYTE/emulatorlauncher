@@ -4,7 +4,6 @@ using System.Linq;
 using System.IO;
 using System.Globalization;
 using EmulatorLauncher.Common.FileFormats;
-using EmulatorLauncher.Common.Joysticks;
 using EmulatorLauncher.Common.EmulationStation;
 using EmulatorLauncher.Common;
 
@@ -15,7 +14,7 @@ namespace EmulatorLauncher
         /// <summary>
         /// cf. https://github.com/flyinghead/flycast/blob/master/core/sdl/sdl.cpp
         /// </summary>
-        private void UpdateSdlControllersWithHints()
+        /*private void UpdateSdlControllersWithHints()
         {
             var hints = new List<string>();
 
@@ -24,12 +23,14 @@ namespace EmulatorLauncher
                 SdlGameController.ReloadWithHints(string.Join(",", hints));
                 Program.Controllers.ForEach(c => c.ResetSdlController());
             }
-        }
+        }*/
 
         private void CreateControllerConfiguration(string path, string system, IniFile ini)
         {
             if (Program.SystemConfig.isOptSet("disableautocontrollers") && Program.SystemConfig["disableautocontrollers"] == "1")
                 return;
+
+            SimpleLogger.Instance.Info("[INFO] Creating controller configuration for Flycast");
 
             // Reset controller attribution
             ini.WriteValue("input", "RawInput", "no");
@@ -74,14 +75,11 @@ namespace EmulatorLauncher
 
             if (controller.IsKeyboard)
                 ConfigureKeyboard(ini, controller.Config, mappingPath, system);
-
             else
                 ConfigureJoystick(ini, controller, mappingPath, system, double_pads, nsamepad);
 
-            var keyboard = Program.Controllers.FirstOrDefault(c => c.IsKeyboard);
-            if (keyboard != null)
-                ConfigureKeyboard(ini, keyboard.Config, mappingPath, system);
-
+            if (controller.PlayerIndex == 1 && !controller.IsKeyboard)
+                ConfigureKBHotkeys(ini, mappingPath, system);
         }
 
         private void ConfigureKeyboard(IniFile ini, InputConfig keyboard, string mappingPath, string system)
@@ -89,11 +87,9 @@ namespace EmulatorLauncher
             if (keyboard == null)
                 return;
 
-            bool isArcade = system != "dreamcast";
-            
             string mappingFile = Path.Combine(mappingPath, "SDL_Keyboard.cfg");
 
-            if (isArcade)
+            if (_isArcade)
                 mappingFile = Path.Combine(mappingPath, "SDL_Keyboard_arcade.cfg");
 
             if (File.Exists(mappingFile))
@@ -136,8 +132,9 @@ namespace EmulatorLauncher
 
                 ctrlini.ClearSection("digital");
                 ctrlini.ClearSection("emulator");
+                ctrlini.ClearSection("analog");
 
-                if (isArcade)
+                if (_isArcade)
                 {
                     WriteKeyboardMapping(0, InputKey.l2, "btn_trigger_left");                                       // left trigger
                     WriteKeyboardMapping(1, fightGame6Buttons ? InputKey.x : InputKey.b, "btn_b");                  // button 2
@@ -206,6 +203,93 @@ namespace EmulatorLauncher
             }
         }
 
+        private void ConfigureKBHotkeys(IniFile ini, string mappingPath, string system)
+        {
+            string mappingFile = Path.Combine(mappingPath, "SDL_Keyboard.cfg");
+
+            if (_isArcade)
+                mappingFile = Path.Combine(mappingPath, "SDL_Keyboard_arcade.cfg");
+
+            if (File.Exists(mappingFile))
+                File.Delete(mappingFile);
+
+            using (var ctrlini = new IniFile(mappingFile, IniOptions.UseSpaces))
+            {
+                ctrlini.ClearSection("digital");
+                ctrlini.ClearSection("emulator");
+                ctrlini.ClearSection("analog");
+
+                if (_isArcade)
+                {
+                    ctrlini.WriteValue("digital", "bind0", "4:btn_y");
+                    ctrlini.WriteValue("digital", "bind1", "6:btn_c");
+                    ctrlini.WriteValue("digital", "bind10", "25:btn_x");
+                    ctrlini.WriteValue("digital", "bind11", "26:btn_trigger_right");
+                    ctrlini.WriteValue("digital", "bind12", "27:btn_b");
+                    ctrlini.WriteValue("digital", "bind13", "29:btn_a");
+                    ctrlini.WriteValue("digital", "bind14", "34:btn_d");
+                    ctrlini.WriteValue("digital", "bind15", "40:btn_start");
+                    ctrlini.WriteValue("digital", "bind16", "41:btn_escape");
+                    ctrlini.WriteValue("digital", "bind17", "42:reload");
+                    ctrlini.WriteValue("digital", "bind18", "43:btn_menu");
+                    ctrlini.WriteValue("digital", "bind19", "58:btn_quick_save");
+                    ctrlini.WriteValue("digital", "bind2", "7:btn_dpad2_left");
+                    ctrlini.WriteValue("digital", "bind20", "59:btn_jump_state");
+                    ctrlini.WriteValue("digital", "bind21", "61:btn_fforward");
+                    ctrlini.WriteValue("digital", "bind22", "62:btn_dpad2_up");
+                    ctrlini.WriteValue("digital", "bind23", "63:btn_dpad2_down");
+                    ctrlini.WriteValue("digital", "bind24", "66:btn_screenshot");
+                    ctrlini.WriteValue("digital", "bind25", "79:btn_dpad1_right");
+                    ctrlini.WriteValue("digital", "bind26", "80:btn_dpad1_left");
+                    ctrlini.WriteValue("digital", "bind27", "81:btn_dpad1_down");
+                    ctrlini.WriteValue("digital", "bind28", "82:btn_dpad1_up");
+                    ctrlini.WriteValue("digital", "bind29", "90:axis2_down");
+                    ctrlini.WriteValue("digital", "bind3", "9:btn_dpad2_right");
+                    ctrlini.WriteValue("digital", "bind30", "92:axis2_left");
+                    ctrlini.WriteValue("digital", "bind31", "94:axis2_right");
+                    ctrlini.WriteValue("digital", "bind32", "96:axis2_up");
+                    ctrlini.WriteValue("digital", "bind4", "12:btn_analog_up");
+                    ctrlini.WriteValue("digital", "bind5", "13:btn_analog_left");
+                    ctrlini.WriteValue("digital", "bind6", "14:btn_analog_down");
+                    ctrlini.WriteValue("digital", "bind7", "15:btn_analog_right");
+                    ctrlini.WriteValue("digital", "bind8", "20:btn_trigger_left");
+                    ctrlini.WriteValue("digital", "bind9", "22:btn_z");
+                }
+                else
+                {
+                    ctrlini.WriteValue("digital", "bind0", "4:btn_x");
+                    ctrlini.WriteValue("digital", "bind1", "12:btn_analog_up");
+                    ctrlini.WriteValue("digital", "bind10", "40:btn_start");
+                    ctrlini.WriteValue("digital", "bind11", "41:btn_escape");
+                    ctrlini.WriteValue("digital", "bind12", "43:btn_menu");
+                    ctrlini.WriteValue("digital", "bind13", "58:btn_quick_save");
+                    ctrlini.WriteValue("digital", "bind14", "59:btn_jump_state");
+                    ctrlini.WriteValue("digital", "bind15", "61:btn_fforward");
+                    ctrlini.WriteValue("digital", "bind16", "66:btn_screenshot");
+                    ctrlini.WriteValue("digital", "bind17", "79:btn_dpad1_right");
+                    ctrlini.WriteValue("digital", "bind18", "80:btn_dpad1_left");
+                    ctrlini.WriteValue("digital", "bind19", "81:btn_dpad1_down");
+                    ctrlini.WriteValue("digital", "bind2", "13:btn_analog_left");
+                    ctrlini.WriteValue("digital", "bind20", "82:btn_dpad1_up");
+                    ctrlini.WriteValue("digital", "bind3", "14:btn_analog_down");
+                    ctrlini.WriteValue("digital", "bind4", "15:btn_analog_right");
+                    ctrlini.WriteValue("digital", "bind5", "20:btn_trigger_left");
+                    ctrlini.WriteValue("digital", "bind6", "22:btn_y");
+                    ctrlini.WriteValue("digital", "bind7", "26:btn_trigger_right");
+                    ctrlini.WriteValue("digital", "bind8", "27:btn_b");
+                    ctrlini.WriteValue("digital", "bind9", "29:btn_a");
+                }
+
+                ctrlini.WriteValue("emulator", "dead_zone", "10");
+                ctrlini.WriteValue("emulator", "mapping_name", "Keyboard");
+                ctrlini.WriteValue("emulator", "rumble_power", "100");
+                ctrlini.WriteValue("emulator", "saturation", "100");
+                ctrlini.WriteValue("emulator", "version", "3");
+
+                ctrlini.Save();
+            }
+        }
+
         private void ConfigureJoystick(IniFile ini, Controller ctrl, string mappingPath, string system, Dictionary<string, int> double_pads, int nsamepad)
         {
             if (ctrl == null)
@@ -215,9 +299,8 @@ namespace EmulatorLauncher
             if (joy == null)
                 return;
 
-            SimpleLogger.Instance.Info("[GAMEPAD] Configuring gamepad " + ctrl.Name + " for player " + ctrl.PlayerIndex + " and system " + system);
+            SimpleLogger.Instance.Info("[GAMEPAD] Configuring gamepad for player " + ctrl.PlayerIndex + " and system " + system);
 
-            bool isArcade = system != "dreamcast";
             int index = ctrl.SdlController != null ? ctrl.SdlController.Index : ctrl.DeviceIndex;
             int playerIndex = ctrl.PlayerIndex;
             string deviceName = ctrl.SdlController != null ? ctrl.SdlController.Name : ctrl.Name;
@@ -228,14 +311,15 @@ namespace EmulatorLauncher
 
             // Test if triggers are analog or digital
             bool analogTriggers = false;
-            bool switchanalog = SystemConfig.isOptSet("flycast_analogdpad") && SystemConfig.getOptBoolean("flycast_analogdpad");
-            bool useR1L1 = SystemConfig.isOptSet("flycast_r1l1") && SystemConfig.getOptBoolean("flycast_r1l1");
+            bool switchToDpad = SystemConfig.isOptSet("flycast_usedpad") && SystemConfig.getOptBoolean("flycast_usedpad");
+            bool useR1L1 = SystemConfig.isOptSet("dreamcast_use_shoulders") && SystemConfig.getOptBoolean("dreamcast_use_shoulders");
+            
             var r2test = joy[InputKey.r2];
             if (joy[InputKey.r2] != null)
                 analogTriggers = r2test.Type == "axis";
 
             string mappingFile = Path.Combine(mappingPath, "SDL_" + deviceName + ".cfg");
-            if (isArcade)
+            if (_isArcade)
                 mappingFile = Path.Combine(mappingPath, "SDL_" + deviceName + "_arcade.cfg");
 
             if (SystemConfig.isOptSet("flycast_controller" + playerIndex) && !string.IsNullOrEmpty(SystemConfig["flycast_controller" + playerIndex]))
@@ -280,57 +364,161 @@ namespace EmulatorLauncher
 
                 List<string> analogBinds = new List<string>();
                 List<string> digitalBinds = new List<string>();
+                YmlContainer game = null;
 
-                if (isArcade)
+                if (_isArcade)
                 {
-                    if (switchanalog)
+                    Dictionary<string, Dictionary<string, string>> gameMapping = new Dictionary<string, Dictionary<string, string>>();
+                    string flycastMapping = null;
+
+                    foreach (var path in mappingPaths)
                     {
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogleft, tech) + ":btn_dpad1_left");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogright, tech) + ":btn_dpad1_right");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogup, tech) + ":btn_dpad1_up");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogdown, tech) + ":btn_dpad1_down");
-                    }
-                    else
-                    {
-                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.up, tech) + ":btn_dpad1_up");
-                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.down, tech) + ":btn_dpad1_down");
-                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.left, tech) + ":btn_dpad1_left");
-                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.right, tech) + ":btn_dpad1_right");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogleft, tech) + ":btn_analog_left");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogright, tech) + ":btn_analog_right");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogup, tech) + ":btn_analog_up");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogdown, tech) + ":btn_analog_down");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogleft, tech) + ":axis2_left");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogright, tech) + ":axis2_right");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogup, tech) + ":axis2_up");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogdown, tech) + ":axis2_down");
+                        string result = path
+                            .Replace("{systempath}", "system")
+                            .Replace("{userpath}", "inputmapping");
+
+                        flycastMapping = Path.Combine(Program.AppConfig.GetFullPath("retrobat"), result);
+
+                        if (File.Exists(flycastMapping))
+                            break;
                     }
 
-                    if (analogTriggers)
+                    if (File.Exists(flycastMapping))
                     {
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.l2, tech) + ":btn_trigger_left");
-                        analogBinds.Add(GetInputKeyName(ctrl, InputKey.r2, tech) + ":btn_trigger_right");
-                    }
-                    else
-                    {
-                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.l2, tech) + ":btn_trigger_left");
-                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.r2, tech) + ":btn_trigger_right");
+                        YmlFile ymlFile = YmlFile.Load(flycastMapping);
+
+                        game = ymlFile.Elements.Where(c => c.Name == _romName).FirstOrDefault() as YmlContainer;
+
+                        if (game == null)
+                            game = ymlFile.Elements.Where(g => _romName.StartsWith(g.Name)).FirstOrDefault() as YmlContainer;
+
+                        if (game == null)
+                            game = ymlFile.Elements.Where(g => g.Name == "default_" + system).FirstOrDefault() as YmlContainer;
+
+                        if (game == null)
+                            game = ymlFile.Elements.Where(g => g.Name == "default").FirstOrDefault() as YmlContainer;
+
+                        if (game != null)
+                        {
+                            var gameName = game.Name;
+                            var buttonMap = new Dictionary<string, string>();
+
+                            foreach (var buttonEntry in game.Elements)
+                            {
+                                YmlElement button = buttonEntry as YmlElement;
+                                if (button != null)
+                                {
+                                    buttonMap.Add(button.Name, button.Value);
+                                }
+                            }
+                            gameMapping.Add(gameName, buttonMap);
+
+                            if (buttonMap.Count > 0)
+                            {
+                                foreach (var button in buttonMap)
+                                {
+                                    switch (button.Key)
+                                    {
+                                        case "leftanalogleft":
+                                        case "leftanalogright":
+                                        case "leftanalogup":
+                                        case "leftanalogdown":
+                                            if (switchToDpad)
+                                                digitalBinds.Add(GetInputKeyName(ctrl, switchToDpadKeys[button.Key], tech) + ":" + button.Value);
+                                            else
+                                                analogBinds.Add(GetInputKeyName(ctrl, yamlToInputKey[button.Key], tech) + ":" + button.Value);
+                                            break;
+                                        case "rightanalogleft":
+                                        case "rightanalogright":
+                                        case "rightanalogup":
+                                        case "rightanalogdown":
+                                            analogBinds.Add(GetInputKeyName(ctrl, yamlToInputKey[button.Key], tech) + ":" + button.Value);
+                                            break;
+                                        case "l2":
+                                        case "r2":
+                                            if (analogTriggers)
+                                                analogBinds.Add(GetInputKeyName(ctrl, yamlToInputKey[button.Key], tech) + ":" + button.Value);
+                                            else
+                                                digitalBinds.Add(GetInputKeyName(ctrl, yamlToInputKey[button.Key], tech) + ":" + button.Value);
+                                            break;
+                                        case "south":
+                                        case "north":
+                                        case "east":
+                                        case "west":
+                                        case "l1":
+                                        case "r1":
+                                        case "l3":
+                                        case "r3":
+                                        case "select":
+                                        case "start":
+                                            digitalBinds.Add(GetInputKeyName(ctrl, yamlToInputKey[button.Key], tech) + ":" + button.Value);
+                                            break;
+                                        case "up":
+                                        case "down":
+                                        case "left":
+                                        case "right":
+                                            if (switchToDpad)
+                                                break;
+                                            else
+                                                digitalBinds.Add(GetInputKeyName(ctrl, yamlToInputKey[button.Key], tech) + ":" + button.Value);
+                                            break;
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.a, tech) + ":btn_a");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.b, tech) + ":btn_b");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.y, tech) + ":btn_x");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.x, tech) + ":btn_y");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pageup, tech) + ":btn_z");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pagedown, tech) + ":btn_c");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.start, tech) + ":btn_start");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.select, tech) + ":btn_d");                                          // coin
-                    
+                    if (game == null)
+                    {
+                        if (!switchToDpad)
+                        {
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogleft, tech) + ":btn_dpad1_left");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogright, tech) + ":btn_dpad1_right");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogup, tech) + ":btn_dpad1_up");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogdown, tech) + ":btn_dpad1_down");
+                        }
+                        else
+                        {
+                            digitalBinds.Add(GetInputKeyName(ctrl, InputKey.up, tech) + ":btn_dpad1_up");
+                            digitalBinds.Add(GetInputKeyName(ctrl, InputKey.down, tech) + ":btn_dpad1_down");
+                            digitalBinds.Add(GetInputKeyName(ctrl, InputKey.left, tech) + ":btn_dpad1_left");
+                            digitalBinds.Add(GetInputKeyName(ctrl, InputKey.right, tech) + ":btn_dpad1_right");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogleft, tech) + ":btn_analog_left");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogright, tech) + ":btn_analog_right");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogup, tech) + ":btn_analog_up");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.leftanalogdown, tech) + ":btn_analog_down");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogleft, tech) + ":axis2_left");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogright, tech) + ":axis2_right");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogup, tech) + ":axis2_up");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.rightanalogdown, tech) + ":axis2_down");
+                        }
+
+                        if (analogTriggers)
+                        {
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.l2, tech) + ":btn_trigger_left");
+                            analogBinds.Add(GetInputKeyName(ctrl, InputKey.r2, tech) + ":btn_trigger_right");
+                        }
+                        else
+                        {
+                            digitalBinds.Add(GetInputKeyName(ctrl, InputKey.l2, tech) + ":btn_trigger_left");
+                            digitalBinds.Add(GetInputKeyName(ctrl, InputKey.r2, tech) + ":btn_trigger_right");
+                        }
+
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.a, tech) + ":btn_a");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.b, tech) + ":btn_b");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.y, tech) + ":btn_c");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.x, tech) + ":btn_x");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pageup, tech) + ":btn_z");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pagedown, tech) + ":btn_y");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.start, tech) + ":btn_start");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.select, tech) + ":btn_d");                                          // coin
+                    }
+
                     if (tech == "SDL")
                         digitalBinds.Add("5:btn_menu");
                     else
                         digitalBinds.Add("10:btn_menu");                                                                                // Guide button (emulator menu)
-                    
+
                     if (serviceMenu)
                     {
                         digitalBinds.Add(GetInputKeyName(ctrl, InputKey.r3, tech) + ":btn_dpad2_down");               // service menu
@@ -359,6 +547,8 @@ namespace EmulatorLauncher
                     {
                         analogBinds.Add(GetInputKeyName(ctrl, InputKey.l2, tech) + ":btn_trigger_left");
                         analogBinds.Add(GetInputKeyName(ctrl, InputKey.r2, tech) + ":btn_trigger_right");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pageup, tech) + ":btn_z");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pagedown, tech) + ":btn_c");
                     }
                     else if (analogTriggers && useR1L1)
                     {
@@ -371,11 +561,14 @@ namespace EmulatorLauncher
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.down, tech) + ":btn_dpad1_down");
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.left, tech) + ":btn_dpad1_left");
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.right, tech) + ":btn_dpad1_right");
-                    
+                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.up, tech) + ":btn_dpad1_up");
+
                     if (!analogTriggers && !useR1L1)
                     {
                         digitalBinds.Add(GetInputKeyName(ctrl, InputKey.l2, tech) + ":btn_trigger_left");
                         digitalBinds.Add(GetInputKeyName(ctrl, InputKey.r2, tech) + ":btn_trigger_right");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pageup, tech) + ":btn_z");
+                        digitalBinds.Add(GetInputKeyName(ctrl, InputKey.pagedown, tech) + ":btn_c");
                     }
                     else if (useR1L1)
                     {
@@ -385,11 +578,10 @@ namespace EmulatorLauncher
 
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.x, tech) + ":btn_y");
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.y, tech) + ":btn_x");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.select, tech) + ":btn_menu");
+                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.l3, tech) + ":btn_menu");
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.start, tech) + ":btn_start");
                     digitalBinds.Add(GetInputKeyName(ctrl, InputKey.r3, tech) + ":btn_d");
-                    digitalBinds.Add(GetInputKeyName(ctrl, InputKey.up, tech) + ":btn_dpad1_up");
-
+                    
                     for (int i = 0; i < analogBinds.Count; i++)
                         ctrlini.WriteValue("analog", "bind" + i, analogBinds[i]);
 
@@ -397,61 +589,15 @@ namespace EmulatorLauncher
                         ctrlini.WriteValue("digital", "bind" + i, digitalBinds[i]);
                 }
 
-                if (SystemConfig.isOptSet("flycast_deadzone") && !string.IsNullOrEmpty(SystemConfig["flycast_deadzone"]))
-                    ctrlini.WriteValue("emulator", "dead_zone", SystemConfig["flycast_deadzone"]);
-                else
-                    ctrlini.WriteValue("emulator", "dead_zone", "15");
-
+                BindIniFeatureSlider(ctrlini, "emulator", "dead_zone", "flycast_deadzone", "15");
                 ctrlini.WriteValue("emulator", "mapping_name", deviceName);
-
-                if (SystemConfig.isOptSet("flycast_rumble") && !string.IsNullOrEmpty(SystemConfig["flycast_rumble"]))
-                    ctrlini.WriteValue("emulator", "rumble_power", SystemConfig["flycast_rumble"]);
-                else
-                    ctrlini.WriteValue("emulator", "rumble_power", "100");
-
+                BindIniFeatureSlider(ctrlini, "emulator", "rumble_power", "flycast_rumble", "100");
                 ctrlini.WriteValue("emulator", "version", "3");
 
                 ctrlini.Save();
             }
 
-            // Add keyboard shortcuts for player 1
-            if (playerIndex == 1)
-            {
-                string kbMappingFile = Path.Combine(mappingPath, "SDL_Keyboard.cfg");
-                if (isArcade)
-                    kbMappingFile = Path.Combine(mappingPath, "SDL_Keyboard_arcade.cfg");
-
-                if (File.Exists(kbMappingFile))
-                    File.Delete(kbMappingFile);
-
-                using (var ctrlini = new IniFile(kbMappingFile, IniOptions.UseSpaces))
-                {
-                    ctrlini.WriteValue("digital", "bind0", "4:btn_d");
-                    ctrlini.WriteValue("digital", "bind1", "6:btn_b");
-                    ctrlini.WriteValue("digital", "bind10", "27:btn_a");
-                    ctrlini.WriteValue("digital", "bind11", "40:btn_start");
-                    ctrlini.WriteValue("digital", "bind12", "41:btn_escape");
-                    ctrlini.WriteValue("digital", "bind13", "43:btn_menu");
-                    ctrlini.WriteValue("digital", "bind14", "44:btn_fforward");
-                    ctrlini.WriteValue("digital", "bind15", "79:btn_dpad1_right");
-                    ctrlini.WriteValue("digital", "bind16", "80:btn_dpad1_left");
-                    ctrlini.WriteValue("digital", "bind17", "81:btn_dpad1_down");
-                    ctrlini.WriteValue("digital", "bind18", "82:btn_dpad1_up");
-                    ctrlini.WriteValue("digital", "bind2", "7:btn_y");
-                    ctrlini.WriteValue("digital", "bind3", "9:btn_trigger_left");
-                    ctrlini.WriteValue("digital", "bind4", "12:btn_analog_up");
-                    ctrlini.WriteValue("digital", "bind5", "13:btn_analog_left");
-                    ctrlini.WriteValue("digital", "bind6", "14:btn_analog_down");
-                    ctrlini.WriteValue("digital", "bind7", "15:btn_analog_right");
-                    ctrlini.WriteValue("digital", "bind8", "22:btn_x");
-                    ctrlini.WriteValue("digital", "bind9", "25:btn_trigger_right");
-                    ctrlini.WriteValue("emulator", "dead_zone", "10");
-                    ctrlini.WriteValue("emulator", "mapping_name", "Keyboard");
-                    ctrlini.WriteValue("emulator", "rumble_power", "100");
-                    ctrlini.WriteValue("emulator", "version", "3");
-                    ctrlini.Save();
-                }
-            }
+            SimpleLogger.Instance.Info("[INFO] Assigned controller " + ctrl.DevicePath + " to player : " + ctrl.PlayerIndex.ToString());
         }
 
         private static string GetInputKeyName(Controller c, InputKey key, string tech)
@@ -461,8 +607,7 @@ namespace EmulatorLauncher
             // If controller is nintendo, A/B and X/Y are reversed
             //bool revertbuttons = (c.VendorID == VendorId.USB_VENDOR_NINTENDO);
 
-            bool revertAxis = false;
-            key = key.GetRevertedAxis(out revertAxis);
+            key = key.GetRevertedAxis(out bool revertAxis);
 
             var input = c.Config[key];
             if (input != null)
@@ -508,7 +653,7 @@ namespace EmulatorLauncher
         }
 
         #region keyboard mapping
-        static Dictionary<SDL.SDL_Keycode, int> keycodeToHID = new Dictionary<SDL.SDL_Keycode, int>()
+        static readonly Dictionary<SDL.SDL_Keycode, int> keycodeToHID = new Dictionary<SDL.SDL_Keycode, int>()
         {
             { SDL.SDL_Keycode.SDLK_a, 4 },
             { SDL.SDL_Keycode.SDLK_b, 5 },
@@ -730,7 +875,7 @@ namespace EmulatorLauncher
             { SDL.SDL_Keycode.SDLK_SLEEP, 282 }
         };
 
-        static Dictionary<SDL.SDL_Keycode, SDL.SDL_Keycode> azertyLayoutMapping = new Dictionary<SDL.SDL_Keycode, SDL.SDL_Keycode>()
+        static readonly Dictionary<SDL.SDL_Keycode, SDL.SDL_Keycode> azertyLayoutMapping = new Dictionary<SDL.SDL_Keycode, SDL.SDL_Keycode>()
         {
             { SDL.SDL_Keycode.SDLK_a, SDL.SDL_Keycode.SDLK_q },
             { SDL.SDL_Keycode.SDLK_q, SDL.SDL_Keycode.SDLK_a },
@@ -745,7 +890,7 @@ namespace EmulatorLauncher
         #endregion
 
         #region controllerinformation
-        static Dictionary<string, int> deviceType = new Dictionary<string, int>()
+        /*static readonly Dictionary<string, int> deviceType = new Dictionary<string, int>()
         {
             { "controller", 0 },
             { "lightgun", 7 },
@@ -754,15 +899,60 @@ namespace EmulatorLauncher
             { "ascii_stick", 4 },
             { "twinstick", 8 },
             { "none", 10 }
-        };
+        };*/
 
-        static Dictionary<string, int> extensionType = new Dictionary<string, int>()
+        /*static readonly Dictionary<string, int> extensionType = new Dictionary<string, int>()
         {
             { "vmu", 1 },
             { "purupuru", 3 },
             { "microphone", 2 },
             { "none", 10 }
-        };
+        };*/
         #endregion
+
+        static readonly Dictionary<string, InputKey> yamlToInputKey = new Dictionary<string, InputKey>()
+        {
+            { "leftanalogleft", InputKey.leftanalogleft },
+            { "leftanalogright", InputKey.leftanalogright },
+            { "leftanalogup", InputKey.leftanalogup },
+            { "leftanalogdown", InputKey.leftanalogdown },
+            { "rightanalogleft", InputKey.rightanalogleft },
+            { "rightanalogright", InputKey.rightanalogright },
+            { "rightanalogup", InputKey.rightanalogup },
+            { "rightanalogdown", InputKey.rightanalogdown },
+            { "south", InputKey.a },
+            { "east", InputKey.b },
+            { "north", InputKey.x },
+            { "west", InputKey.y },
+            { "select", InputKey.select },
+            { "start", InputKey.start },
+            { "l1", InputKey.pageup },
+            { "r1", InputKey.pagedown },
+            { "l2", InputKey.l2 },
+            { "r2", InputKey.r2 },
+            { "l3", InputKey.l3 },
+            { "r3", InputKey.r3 },
+            { "up", InputKey.up },
+            { "down", InputKey.down },
+            { "left", InputKey.left },
+            { "right", InputKey.right },
+        };
+
+        static readonly Dictionary<string, InputKey> switchToDpadKeys = new Dictionary<string, InputKey>()
+        {
+            { "leftanalogleft", InputKey.left },
+            { "leftanalogright", InputKey.right },
+            { "leftanalogup", InputKey.up },
+            { "leftanalogdown", InputKey.down },
+        };
+
+        static string[] mappingPaths =
+        {            
+            // User specific
+            "{userpath}\\flycast_Arcade.yml",
+
+            // RetroBat Default
+            "{systempath}\\resources\\inputmapping\\flycast_Arcade.yml",
+        };
     }
 }

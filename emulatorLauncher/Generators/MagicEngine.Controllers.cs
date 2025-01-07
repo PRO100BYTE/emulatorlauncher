@@ -14,6 +14,8 @@ namespace EmulatorLauncher
             if (Program.SystemConfig.isOptSet("disableautocontrollers") && Program.SystemConfig["disableautocontrollers"] == "1")
                 return;
 
+            SimpleLogger.Instance.Info("[INFO] Creating controller configuration for MagicEngine");
+
             string cfgFile = Path.Combine(path, "pce.cfg");
 
             byte[] bytes;
@@ -73,11 +75,21 @@ namespace EmulatorLauncher
                 return;
 
             string gamecontrollerDB = Path.Combine(AppConfig.GetFullPath("tools"), "gamecontrollerdb.txt");
-            string guid = (ctrl.Guid.ToString()).Substring(0, 27) + "00000";
+            string guid = (ctrl.Guid.ToString()).Substring(0, 24) + "00000000";
             SdlToDirectInput sdlCtrl = null;
             int playerIndex = ctrl.PlayerIndex - 1;
             int startIndex = gamepadByteIndex + 16 + (playerIndex * 148);
             int ctrlIndex = ctrl.DirectInput != null ? ctrl.DirectInput.DeviceIndex : ctrl.DeviceIndex;
+
+            string forceIndex = "magicengine_p" + ctrl.PlayerIndex + "_forceindex";
+            if (SystemConfig.isOptSet(forceIndex) && !string.IsNullOrEmpty(SystemConfig[forceIndex]))
+            {
+                ctrlIndex = SystemConfig[forceIndex].ToInteger();
+            }
+
+            if (playerIndex == 0 && ctrlIndex > 0)
+                startIndex = startIndex + 16;
+
             int buttonStart = startIndex + 4;
 
             if (!File.Exists(gamecontrollerDB))
@@ -104,12 +116,14 @@ namespace EmulatorLauncher
             {
                 byte[] toSet = GetButtonByteArray(sdlCtrl, button, ctrlIndex);
 
-                if (!isZeroByteArray(toSet))
+                if (!IsZeroByteArray(toSet))
                 {
                     System.Array.Copy(toSet, 0, bytes, buttonStart, 12);
                     buttonStart += 12;
                 }
             }
+
+            SimpleLogger.Instance.Info("[INFO] Assigned controller " + ctrl.DevicePath + " to player : " + ctrl.PlayerIndex.ToString());
         }
 
         private byte[] GetButtonByteArray(SdlToDirectInput sdlCtrl, string key, int ctrlIndex)
@@ -161,22 +175,22 @@ namespace EmulatorLauncher
             return toSet;
         }
 
-        private static Dictionary<string, byte> buttonMap = new Dictionary<string, byte>()
+        private static readonly Dictionary<string, byte> buttonMap = new Dictionary<string, byte>()
         {
             { "leftx", 0x0D },
             { "lefty", 0x0E },
             { "a", 0x03 },
             { "b", 0x04 },
-            { "x", 0x0A },
-            { "y", 0x09 },
-            { "leftshoulder", 0x0B },
-            { "rightshoulder", 0x0C },
+            { "leftshoulder", 0x0A },
+            { "rightshoulder", 0x09 },
+            { "y", 0x0B },
+            { "x", 0x0C },
             { "back", 0x02 },
             { "start", 0x01 },
             { "dpup", 0x0F },
         };
 
-        public static bool isZeroByteArray(byte[] array)
+        public static bool IsZeroByteArray(byte[] array)
         {
             foreach (byte b in array)
             {

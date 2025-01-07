@@ -11,82 +11,120 @@ namespace EmulatorLauncher
             var coreSettings = json.GetOrCreateContainer("CoreSettings");
             var coreSyncSettings = json.GetOrCreateContainer("CoreSyncSettings");
 
+            // 3DS
+            ConfigureEncore(coreSettings, coreSyncSettings, core);
+
             // ATARI
-            ConfigureAtari2600(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureAtari7800(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureJaguar(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureAtari2600(coreSyncSettings, core);
+            ConfigureAtari7800(coreSyncSettings, core);
+            ConfigureJaguar(coreSyncSettings, core);
+
+            // INTV
+            Configureintv(coreSyncSettings, core);
+
+            // channelF
+            ConfigurechannelF(coreSyncSettings, core);
 
             // NES
-            ConfigureQuickNES(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureNesHawk(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureQuickNES(coreSyncSettings, core);
+            ConfigureNesHawk(json, coreSyncSettings, core, system);
 
             // SNES
-            ConfigureFaust(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureSnes9x(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureBsnes(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureFaust(coreSyncSettings, core);
+            ConfigureSnes9x(json, coreSyncSettings, core, system);
+            ConfigureBsnes(json, coreSyncSettings, core, system);
 
             // MASTER SYSTEM + GAMEGEAR
-            ConfigureSmsHawk(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureSmsHawk(json, coreSyncSettings, core, system);
 
             // MEGADRIVE + 32X
-            ConfigureGenesisPlusGX(json, coreSettings, coreSyncSettings, core, system);
-            ConfigurePicoDrive(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureGenesisPlusGX(coreSyncSettings, core);
+            ConfigurePicoDrive(coreSyncSettings, core);
 
             // SATURN
-            ConfigureSaturnus(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureSaturnus(json, coreSyncSettings, core, system);
 
             // PC ENGINE
-            ConfigureTurboNyma(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureHyperNyma(json, coreSettings, coreSyncSettings, core, system);
-            ConfigurePCEHawk(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureTurboNyma(coreSyncSettings, core);
+            ConfigureHyperNyma(coreSyncSettings, core, system);
+            ConfigurePCEHawk(coreSyncSettings, core);
 
             // GAME BOY / COLOR
-            ConfigureSameboy(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureGambatte(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureGBHawk(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureSameboy(coreSyncSettings, core, system);
+            ConfigureGambatte(coreSyncSettings, core, system);
+            ConfigureGBHawk(coreSyncSettings, core);
 
             // GBA
-            ConfiguremGBA(json, coreSettings, coreSyncSettings, core, system);
+            ConfiguremGBA(coreSyncSettings, core);
 
             // N64
-            ConfigureMupen64(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureAres64(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureMupen64(coreSettings, coreSyncSettings, core);
+            ConfigureAres64(coreSyncSettings, core);
 
             // NDS
-            ConfigureMelonDS(json, coreSettings, coreSyncSettings, core, system, rom);
+            ConfigureMelonDS(coreSettings, coreSyncSettings, core, rom);
 
             // NEO GEO POCKET
-            ConfigureNeopop(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureNeopop(coreSyncSettings, core);
 
             // COLECOVISION
-            ConfigureColecovision(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureColecovision(coreSyncSettings, core);
 
             // PCFX
-            ConfigurePcfx(json, coreSettings, coreSyncSettings, core, system);
+            ConfigurePcfx(coreSyncSettings, core);
 
             // PSX
-            ConfigureNymashock(json, coreSettings, coreSyncSettings, core, system);
-            ConfigureOctoshock(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureNymashock(coreSyncSettings, core);
+            ConfigureOctoshock(coreSettings, coreSyncSettings, core);
 
             // Odyssey 2
-            ConfigureO2Hawk(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureO2Hawk(coreSyncSettings, core);
 
             // TIC-80
-            Configuretic80(json, coreSettings, coreSyncSettings, core, system);
+            Configuretic80(coreSyncSettings, core);
 
             // Virtual Boy
-            ConfigureticVirtualBoyee(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureticVirtualBoyee(coreSyncSettings, core);
 
             // WSWAN - WSWANC
-            ConfigureCygne(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureCygne(coreSyncSettings, core);
 
             // ZX Spectrum
-            ConfigureZXHawk(json, coreSettings, coreSyncSettings, core, system);
+            ConfigureZXHawk(coreSyncSettings, core);
         }
 
-        private void ConfigureAtari2600(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureEncore(DynamicJson coreSettings, DynamicJson coreSyncSettings, string core)
         {
-            if (core != "A26")
+            if (core != "Encore")
+                return;
+
+            var encoreCoreSettings = coreSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Consoles.Nintendo.N3DS.Encore");
+            var encoreSyncSettings = coreSyncSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Consoles.Nintendo.N3DS.Encore");
+
+            // Core settings
+            encoreCoreSettings["$type"] = "BizHawk.Emulation.Cores.Consoles.Nintendo.N3DS.Encore+EncoreSettings, BizHawk.Emulation.Cores";
+            BindFeature(encoreCoreSettings, "TextureFilter", "bizhawk_3ds_texturefilter", "0");
+            BindFeature(encoreCoreSettings, "TextureSampling", "bizhawk_3ds_texturesampling", "0");
+            BindBoolFeatureOn(encoreCoreSettings, "FilterMode", "bizhawk_3ds_filtermode", "true", "false");
+            BindFeature(encoreCoreSettings, "LayoutOption", "bizhawk_3ds_layoutmode", "0");
+            BindBoolFeature(encoreCoreSettings, "SwapScreen", "bizhawk_3ds_swapscreen", "true", "false");
+            BindBoolFeature(encoreCoreSettings, "UprightScreen", "bizhawk_3ds_vertical", "true", "false");
+
+            // Sync settings
+            encoreSyncSettings["$type"] = "BizHawk.Emulation.Cores.Consoles.Nintendo.N3DS.Encore+EncoreSyncSettings, BizHawk.Emulation.Cores";
+            BindBoolFeature(encoreSyncSettings, "UseCpuJit", "bizhawk_3ds_cpuJIT", "false", "true");
+            BindBoolFeature(encoreSyncSettings, "GraphicsApi", "bizhawk_3ds_renderer", "0", "1");
+            BindBoolFeatureOn(encoreSyncSettings, "AsyncShaderCompilation", "bizhawk_3ds_asyncshaders", "true", "false");
+            BindBoolFeature(encoreSyncSettings, "UseVirtualSd", "bizhawk_3ds_virtualSD", "false", "true");
+            BindBoolFeatureOn(encoreSyncSettings, "IsNew3ds", "bizhawk_3ds_new3ds", "true", "false");
+            BindFeature(encoreSyncSettings, "RegionValue", "bizhawk_3ds_region", "-1");
+            BindFeature(encoreSyncSettings, "CFGSystemLanguage", "bizhawk_3ds_language", "1");
+            encoreSyncSettings["CFGUsername"] = "RETROBAT";
+        }
+
+        private void ConfigureAtari2600(DynamicJson coreSyncSettings, string core)
+        {
+            if (core != "A26" && core != "Atari2600Hawk")
                 return;
 
             var a2600Sync = coreSyncSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Atari.Atari2600.Atari2600");
@@ -98,7 +136,7 @@ namespace EmulatorLauncher
             BindFeature(a2600Sync, "RightDifficulty", "bizhawk_A26_difficulty", "true");
         }
 
-        private void ConfigureAtari7800(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureAtari7800(DynamicJson coreSyncSettings, string core)
         {
             if (core != "A78")
                 return;
@@ -109,7 +147,7 @@ namespace EmulatorLauncher
             a7800Sync["_port2"] = "Joystick Controller";
         }
 
-        private void ConfigureJaguar(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureJaguar(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Jaguar")
                 return;
@@ -122,9 +160,48 @@ namespace EmulatorLauncher
             BindBoolFeature(jaguarSync, "NTSC", "bizhawk_jaguar_forcePAL", "false", "true");
         }
 
-        private void ConfigureQuickNES(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void Configureintv(DynamicJson coreSyncSettings, string core)
         {
-            if (core != "QuickNes")
+            if (core != "IntelliHawk")
+                return;
+
+            var intvSync = coreSyncSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Intellivision.Intellivision");
+            intvSync["$type"] = "BizHawk.Emulation.Cores.Intellivision.Intellivision+IntvSyncSettings, BizHawk.Emulation.Cores";
+
+            if (Program.SystemConfig.isOptSet("bizhawk_intv_padtype") && !string.IsNullOrEmpty(Program.SystemConfig["bizhawk_intv_padtype"]))
+            {
+                intvSync["_port1"] = Program.SystemConfig["bizhawk_intv_padtype"];
+                intvSync["_port2"] = Program.SystemConfig["bizhawk_intv_padtype"];
+            }
+            else
+            {
+                intvSync["_port1"] = "Standard (Analog Disc)";
+                intvSync["_port2"] = "Standard (Analog Disc)";
+            }
+        }
+
+        private void ConfigurechannelF(DynamicJson coreSyncSettings, string core)
+        {
+            if (core != "ChannelFHawk")
+                return;
+
+            var channelfSync = coreSyncSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Consoles.ChannelF.ChannelF");
+            channelfSync["$type"] = "BizHawk.Emulation.Cores.Consoles.ChannelF.ChannelF+ChannelFSyncSettings, BizHawk.Emulation.Cores";
+
+            if (Program.SystemConfig.isOptSet("bizhawk_channelf_region") && !string.IsNullOrEmpty(Program.SystemConfig["bizhawk_channelf_region"]))
+                channelfSync["Region"] = Program.SystemConfig["bizhawk_channelf_region"];
+            else
+                channelfSync["Region"] = "0";
+
+            if (Program.SystemConfig.isOptSet("bizhawk_channelf_version") && !string.IsNullOrEmpty(Program.SystemConfig["bizhawk_channelf_version"]))
+                channelfSync["Version"] = Program.SystemConfig["bizhawk_channelf_version"];
+            else
+                channelfSync["Version"] = "0";
+        }
+
+        private void ConfigureQuickNES(DynamicJson coreSyncSettings, string core)
+        {
+            if (core != "QuickNes" && core != "quickerNES")
                 return;
 
             var quickNesSync = coreSyncSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Consoles.Nintendo.QuickNES.QuickNES");
@@ -133,7 +210,7 @@ namespace EmulatorLauncher
             quickNesSync["RightPortConnected"] = "true";
         }
 
-        private void ConfigureNesHawk(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureNesHawk(DynamicJson json, DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "NesHawk")
                 return;
@@ -172,7 +249,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureFaust(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureFaust(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Faust")
                 return;
@@ -196,7 +273,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureSnes9x(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureSnes9x(DynamicJson json, DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "Snes9x")
                 return;
@@ -220,7 +297,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureBsnes(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureBsnes(DynamicJson json, DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "BSNES")
                 return;
@@ -253,7 +330,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureSmsHawk(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureSmsHawk(DynamicJson json, DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "SMSHawk")
                 return;
@@ -279,7 +356,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureGenesisPlusGX(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureGenesisPlusGX(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Genplus-gx")
                 return;
@@ -287,7 +364,7 @@ namespace EmulatorLauncher
             var genplusgxSync = coreSyncSettings.GetOrCreateContainer("BizHawk.Emulation.Cores.Consoles.Sega.gpgx.GPGX");
             genplusgxSync["$type"] = "BizHawk.Emulation.Cores.Consoles.Sega.gpgx.GPGX+GPGXSyncSettings, BizHawk.Emulation.Cores";
             
-            BindBoolFeature(genplusgxSync, "UseSixButton", "bizhawk_md_buttons", "false", "true");
+            BindBoolFeature(genplusgxSync, "UseSixButton", "md_3buttons", "false", "true");
             BindFeature(genplusgxSync, "Region", "bizhawk_md_region", "0");
             BindBoolFeature(genplusgxSync, "Filter", "bizhawk_md_lowpass", "1", "0");
 
@@ -308,7 +385,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigurePicoDrive(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigurePicoDrive(DynamicJson coreSyncSettings, string core)
         {
             if (core != "PicoDrive")
                 return;
@@ -319,7 +396,7 @@ namespace EmulatorLauncher
             BindFeature(picoSync, "RegionOverride", "bizhawk_pico_region", "0");
         }
 
-        private void ConfigureSaturnus(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureSaturnus(DynamicJson json, DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "Saturnus")
                 return;
@@ -374,7 +451,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureTurboNyma(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureTurboNyma(DynamicJson coreSyncSettings, string core)
         {
             if (core != "TurboNyma")
                 return;
@@ -396,7 +473,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureHyperNyma(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureHyperNyma(DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "HyperNyma")
                 return;
@@ -419,7 +496,7 @@ namespace EmulatorLauncher
                 mednafenValues["pce_fast.forcesgx"] = "0";
         }
 
-        private void ConfigurePCEHawk(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigurePCEHawk(DynamicJson coreSyncSettings, string core)
         {
             if (core != "PCEHawk")
                 return;
@@ -434,7 +511,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureSameboy(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureSameboy(DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "SameBoy")
                 return;
@@ -455,7 +532,7 @@ namespace EmulatorLauncher
                 sameboySync["EnableBIOS"] = "false";
         }
 
-        private void ConfigureGambatte(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureGambatte(DynamicJson coreSyncSettings, string core, string system)
         {
             if (core != "Gambatte")
                 return;
@@ -476,7 +553,7 @@ namespace EmulatorLauncher
                 gambatteSync["EnableBIOS"] = "false";
         }
 
-        private void ConfigureGBHawk(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureGBHawk(DynamicJson coreSyncSettings, string core)
         {
             if (core != "GBHawk")
                 return;
@@ -486,7 +563,7 @@ namespace EmulatorLauncher
             gbhawkSync["ConsoleMode"] = "0";
         }
 
-        private void ConfiguremGBA(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfiguremGBA(DynamicJson coreSyncSettings, string core)
         {
             if (core != "mGBA")
                 return;
@@ -495,10 +572,10 @@ namespace EmulatorLauncher
             gbahawkSync["$type"] = "BizHawk.Emulation.Cores.Nintendo.GBA.MGBAHawk+SyncSettings, BizHawk.Emulation.Cores";
             gbahawkSync["SkipBios"] = "true";
 
-            BindBoolFeature(gbahawkSync, "SkipBios", "bizhawk_gba_skipbios", "false", "true");
+            BindBoolFeatureOn(gbahawkSync, "SkipBios", "bizhawk_gba_skipbios", "true", "false");
         }
 
-        private void ConfigureMupen64(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureMupen64(DynamicJson coreSettings, DynamicJson coreSyncSettings, string core)
         {
             if (core != "Mupen64Plus")
                 return;
@@ -557,14 +634,16 @@ namespace EmulatorLauncher
 
             mupen64Sync.SetObject("Controllers", n64controller);
 
+            /*
             var ricePlugin = mupen64Sync.GetOrCreateContainer("RicePlugin");
             var glidePlugin = mupen64Sync.GetOrCreateContainer("GlidePlugin");
             var glidemk2Plugin = mupen64Sync.GetOrCreateContainer("Glide64mk2Plugin");
             var glide64Plugin = mupen64Sync.GetOrCreateContainer("GLideN64Plugin");
             var angrylionPlugin = mupen64Sync.GetOrCreateContainer("AngrylionPlugin");
+            */
         }
 
-        private void ConfigureAres64(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureAres64(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Ares64")
                 return;
@@ -580,7 +659,7 @@ namespace EmulatorLauncher
             BindFeature(ares64Sync, "CPUEmulation", "bizhawk_n64_cpucore", "1");
         }
 
-        private void ConfigureMelonDS(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system, string rom)
+        private void ConfigureMelonDS(DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string rom)
         {
             if (core != "melonDS")
                 return;
@@ -632,7 +711,7 @@ namespace EmulatorLauncher
                 melonDSSync["UseDSi"] = "false";
         }
 
-        private void ConfigureNeopop(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureNeopop(DynamicJson coreSyncSettings, string core)
         {
             if (core != "NeoPop")
                 return;
@@ -645,7 +724,7 @@ namespace EmulatorLauncher
             BindFeature(mednafenValues, "ngp.language", "bizhawk_ngp_language", "english");
         }
 
-        private void ConfigureColecovision(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureColecovision(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Coleco")
                 return;
@@ -657,7 +736,7 @@ namespace EmulatorLauncher
 
         }
 
-        private void ConfigurePcfx(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigurePcfx(DynamicJson coreSyncSettings, string core)
         {
             if (core != "PCFX")
                 return;
@@ -673,7 +752,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureNymashock(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureNymashock(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Nymashock")
                 return;
@@ -723,7 +802,7 @@ namespace EmulatorLauncher
             }
         }
 
-        private void ConfigureOctoshock(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureOctoshock(DynamicJson coreSettings, DynamicJson coreSyncSettings, string core)
         {
             if (core != "Octoshock")
                 return;
@@ -735,9 +814,11 @@ namespace EmulatorLauncher
             fioconfig.Remove("Multitaps");
 
             // Add memcards
-            List<bool> memcards = new List<bool>();
-            memcards.Add(true);
-            memcards.Add(true);
+            List<bool> memcards = new List<bool>
+            {
+                true,
+                true
+            };
             fioconfig.SetObject("Memcards", memcards);
 
             // Multitaps
@@ -779,7 +860,7 @@ namespace EmulatorLauncher
             octoshock["ResolutionMode"] = "3";
         }
 
-        private void ConfigureO2Hawk(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureO2Hawk(DynamicJson coreSyncSettings, string core)
         {
             if (core != "O2Hawk")
                 return;
@@ -790,7 +871,7 @@ namespace EmulatorLauncher
             BindBoolFeature(o2Sync, "G7400_Enable", "bizhawk_o2_g7400", "true", "false");
         }
 
-        private void Configuretic80(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void Configuretic80(DynamicJson coreSyncSettings, string core)
         {
             if (core != "TIC-80")
                 return;
@@ -804,7 +885,7 @@ namespace EmulatorLauncher
             tic80Sync["Mouse"] = "true";
         }
 
-        private void ConfigureticVirtualBoyee(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureticVirtualBoyee(DynamicJson coreSyncSettings, string core)
         {
             if (core != "VirtualBoyee")
                 return;
@@ -813,7 +894,7 @@ namespace EmulatorLauncher
             vbSync["$type"] = "BizHawk.Emulation.Cores.Waterbox.NymaCore+NymaSyncSettings, BizHawk.Emulation.Cores";
         }
 
-        private void ConfigureCygne(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureCygne(DynamicJson coreSyncSettings, string core)
         {
             if (core != "Cygne")
                 return;
@@ -824,7 +905,7 @@ namespace EmulatorLauncher
             BindFeature(wswanSync, "Language", "bizhawk_wswan_language", "1");
         }
 
-        private void ConfigureZXHawk(DynamicJson json, DynamicJson coreSettings, DynamicJson coreSyncSettings, string core, string system)
+        private void ConfigureZXHawk(DynamicJson coreSyncSettings, string core)
         {
             if (core != "ZXHawk")
                 return;

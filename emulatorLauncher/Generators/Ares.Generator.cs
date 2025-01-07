@@ -15,14 +15,25 @@ namespace EmulatorLauncher
 
         private BezelFiles _bezelFileInfo;
         private ScreenResolution _resolution;
+        private string _path;
+        private string _system;
+        static List<string> _mdSystems = new List<string>() { "genesis", "megadrive", "mega32x", "megacd", "segacd", "sega32x" };
+        static List<string> _n64Systems = new List<string>() { "n64", "n64dd" };
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
+            SimpleLogger.Instance.Info("[Generator] Getting " + emulator + " path and executable name.");
+
             string path = AppConfig.GetFullPath("ares");
+            if (!Directory.Exists(path))
+                return null;
 
             string exe = Path.Combine(path, "ares.exe");
             if (!File.Exists(exe))
                 return null;
+
+            _path = path;
+            _system = system;
 
             bool fullscreen = !IsEmulationStationWindowed() || SystemConfig.getOptBoolean("forcefullscreen");
 
@@ -30,8 +41,29 @@ namespace EmulatorLauncher
             if (!fullscreen)
                 SystemConfig["forceNoBezel"] = "1";
 
-            if (!ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x64, system, rom, path, resolution))
-                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution);
+            //Applying bezels
+            string renderer = "OpenGL 3.2";
+            if (SystemConfig.isOptSet("ares_renderer") && !string.IsNullOrEmpty(SystemConfig["ares_renderer"]))
+                renderer = SystemConfig["ares_renderer"];
+
+            switch (renderer)
+            {
+                case "OpenGL 3.2":
+                    ReshadeManager.UninstallReshader(ReshadeBezelType.d3d9, path);
+                    if (!ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x64, system, rom, path, resolution, emulator))
+                        _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
+                    break;
+                case "Direct3D 9.0":
+                    ReshadeManager.UninstallReshader(ReshadeBezelType.opengl, path);
+                    if (!ReshadeManager.Setup(ReshadeBezelType.d3d9, ReshadePlatform.x64, system, rom, path, resolution, emulator))
+                        _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
+                    break;
+                case "GDI":
+                    ReshadeManager.UninstallReshader(ReshadeBezelType.d3d9, path);
+                    ReshadeManager.UninstallReshader(ReshadeBezelType.opengl, path);
+                    SystemConfig["forceNoBezel"] = "1";
+                    break;
+            }
 
             _resolution = resolution;
 
@@ -40,10 +72,11 @@ namespace EmulatorLauncher
             if (aresSystems.ContainsKey(core))
                 aresSystem = aresSystems[core];
 
-            List<string> commandArray = new List<string>();
-            
-            commandArray.Add("--system");
-            commandArray.Add("\"" + aresSystem + "\"");
+            List<string> commandArray = new List<string>
+            {
+                "--system",
+                "\"" + aresSystem + "\""
+            };
 
             // if running a n64dd game, both roms need to be specified with the ndd rom last
             if (system == "n64dd" && Path.GetExtension(rom) == ".ndd")
@@ -70,10 +103,10 @@ namespace EmulatorLauncher
             string args = string.Join(" ", commandArray);
 
             var bml = BmlFile.Load(Path.Combine(path, "settings.bml"));
-            SetupConfiguration(bml, path, system, core, rom);
-            SetupFirmwares(bml, path, system, core, rom);
-            WriteKeyboardHotkeys(bml, path);
-            CreateControllerConfiguration(bml, path);
+            SetupConfiguration(bml, system, core, rom);
+            SetupFirmwares(bml, system);
+            WriteKeyboardHotkeys(bml);
+            CreateControllerConfiguration(bml);
 
             bml.Save();
 
@@ -89,7 +122,7 @@ namespace EmulatorLauncher
         /// Setup settings.bml file
         /// </summary>
         /// <param name="path"></param>
-        private void SetupConfiguration(BmlFile bml, string path, string system, string core, string rom)
+        private void SetupConfiguration(BmlFile bml, string system, string core, string rom)
         {
             // Set driver for input
             var input = bml.GetOrCreateContainer("Input");
@@ -102,6 +135,8 @@ namespace EmulatorLauncher
             BindFeature(video, "Driver", "ares_renderer", "OpenGL 3.2");
             BindFeature(video, "Output", "ares_aspect", "Scale");
 
+            /*string shaderPath = Path.Combine(AppConfig.GetFullPath("ares"), "Shaders");
+
             if (SystemConfig.isOptSet("ares_shaders") && SystemConfig["ares_shaders"] == "none")
                 video["Shader"] = "None";
             else if (SystemConfig.isOptSet("ares_shaders") && SystemConfig["ares_shaders"] == "Blur")
@@ -109,26 +144,58 @@ namespace EmulatorLauncher
             else if (SystemConfig.isOptSet("ares_shaders") && !string.IsNullOrEmpty(SystemConfig["ares_shaders"]))
             {
                 string shader = SystemConfig["ares_shaders"];
-                string pathShader = Path.Combine(path, "Shaders", shader + "/").Replace("\\", "/");
+                string pathShader = Path.Combine(shaderPath, shader + ".slangp").Replace("\\", "/");
                 video["Shader"] = pathShader;
+            }*/
+
+            if (AppConfig.isOptSet("shaders") && SystemConfig.isOptSet("shader") && SystemConfig["shader"] != "None")
+            {
+                string ShadersPath = Path.Combine(AppConfig.GetFullPath("shaders"), "configs", SystemConfig["shaderset"], "rendering-defaults.yml");
+                if (File.Exists(ShadersPath))
+                {
+                    string renderconfig = SystemShaders.GetShader(File.ReadAllText(ShadersPath), SystemConfig["system"], SystemConfig["emulator"], SystemConfig["core"], false);
+                    if (!string.IsNullOrEmpty(renderconfig))
+                        SystemConfig["shader"] = renderconfig;
+                }
+
+                string shaderFilename = SystemConfig["shader"] + ".slangp";
+                string videoShader = Path.Combine(AppConfig.GetFullPath("shaders"), shaderFilename).Replace("/", "\\");
+                if (!File.Exists(videoShader))
+                    videoShader = Path.Combine(AppConfig.GetFullPath("shaders"), "shaders_slang", shaderFilename).Replace("/", "\\");
+
+                if (!File.Exists(videoShader))
+                    videoShader = Path.Combine(AppConfig.GetFullPath("shaders"), "slang", shaderFilename).Replace("/", "\\");
+
+                if (!File.Exists(videoShader))
+                    videoShader = Path.Combine(AppConfig.GetFullPath("retroarch"), "shaders", "shaders_slang", shaderFilename).Replace("/", "\\");
+
+                if (!File.Exists(videoShader) && shaderFilename.Contains("zfast-"))
+                    videoShader = Path.Combine(AppConfig.GetFullPath("retroarch"), "shaders", "shaders_slang", "crt/crt-geom.slangp").Replace("/", "\\");
+
+                video["Shader"] = videoShader;
             }
+            else
+                video["Shader"] = "None";
 
             BindBoolFeature(video, "ColorBleed", "ares_colobleed", "true", "false");
-            BindBoolFeature(video, "ColorEmulation", "ares_coloremulation", "false", "true");
-            BindBoolFeature(video, "InterframeBlending", "ares_interframe_blend", "false", "true");
+            BindBoolFeatureOn(video, "ColorEmulation", "ares_coloremulation", "true", "false");
+            BindBoolFeatureOn(video, "InterframeBlending", "ares_interframe_blend", "true", "false");
             BindBoolFeature(video, "Overscan", "ares_overscan", "true", "false");
             BindBoolFeature(video, "PixelAccuracy", "ares_pixel_accurate", "true", "false");
             BindFeature(video, "Quality", "ares_n64_quality", "SD");
+            BindFeatureSlider(video, "Luminance", "ares_luminance", "1.0", 2);
+            BindFeatureSlider(video, "Saturation", "ares_saturation", "1.0", 2);
+            BindFeatureSlider(video, "Gamma", "ares_gamma", "1.0", 2);
 
             if (!SystemConfig.isOptSet("ares_n64_quality") || SystemConfig["ares_n64_quality"] == "SD")
                     video["Supersampling"] = "false";
             else
                 BindBoolFeature(video, "Supersampling", "ares_supersampling", "true", "false");
             
-            bool supersample = SystemConfig.isOptSet("ares_supersampling") && SystemConfig.getOptBoolean("ares_supersampling");
+            bool supersample = SystemConfig.getOptBoolean("ares_supersampling");
 
             if (!supersample)
-                BindBoolFeature(video, "WeaveDeinterlacing", "ares_weavedeinterlacing", "false", "true");
+                BindBoolFeatureOn(video, "WeaveDeinterlacing", "ares_weavedeinterlacing", "true", "false");
             else
                 video["WeaveDeinterlacing"] = "false";
 
@@ -166,9 +233,13 @@ namespace EmulatorLauncher
             // Current rom path
             var aresCore = bml.GetOrCreateContainer(core);
             aresCore["Path"] = Path.GetDirectoryName(rom).Replace("\\", "/") + "/";
+
+            // N64 expansion pak
+            var n64bml = bml.GetOrCreateContainer("Nintendo64");
+            BindBoolFeatureOn(n64bml, "ExpansionPak", "ares_ExpansionPak", "true", "false");
         }
 
-        private void WriteKeyboardHotkeys(BmlFile bml, string path)
+        private void WriteKeyboardHotkeys(BmlFile bml)
         {
             // Use padtokey mapping to map these keys to controllers as Ares does not allow combos
             var hotkey = bml.GetOrCreateContainer("Hotkey");
@@ -186,7 +257,7 @@ namespace EmulatorLauncher
             hotkey["QuitEmulator"] = "0x1/0/12;;";          // F12
         }
 
-        private void SetupFirmwares(BmlFile bml, string path, string system, string core, string rom)
+        private void SetupFirmwares(BmlFile bml, string system)
         {
             if (system == "colecovision")
             {
@@ -284,8 +355,8 @@ namespace EmulatorLauncher
                 string biospcecd = Path.Combine(AppConfig.GetFullPath("bios"), "syscard3.pce");
                 if (File.Exists(biospcecd))
                 {
-                    firmware["BIOS.US"] = biospcecd.Replace("\\", "/");
-                    firmware["BIOS.Japan"] = biospcecd.Replace("\\", "/");
+                    firmware["System-Card-3.0.US"] = biospcecd.Replace("\\", "/");
+                    firmware["System-Card-3.0.Japan"] = biospcecd.Replace("\\", "/");
                 }
             }
 
@@ -331,49 +402,50 @@ namespace EmulatorLauncher
 
             int ret = base.RunAndWait(path);
 
-            if (bezel != null)
-                bezel.Dispose();
+            bezel?.Dispose();
 
             if (ret == 1)
+            {
                 return 0;
+            }
 
             return ret;
         }
 
-        private static Dictionary<string, string> aresSystems = new Dictionary<string, string>
+        private static readonly Dictionary<string, string> aresSystems = new Dictionary<string, string>
         {
             { "Atari2600", "Atari2600" },
-            { "WonderSwan", "WonderSwan" },
-            { "WonderSwanColor", "WonderSwanColor" },
-            { "PocketChallengeV2", "PocketChallengeV2" },
             { "ColecoVision", "ColecoVision" },
-            { "MyVision", "MyVision" },
-            { "MSX", "MSX" },
-            { "MSX2", "MSX2" },
-            { "PCEngine", "PCEngine" },
-            { "PCEngineCD", "PCEngineCD" },
-            { "SuperGrafx", "SuperGrafx" },
-            { "SuperGrafxCD", "SuperGrafxCD" },
             { "Famicom", "Famicom" },
             { "FamicomDiskSystem", "FamicomDiskSystem" },
-            { "SuperFamicom", "SuperFamicom" },
-            { "Nintendo64", "Nintendo64" },
-            { "Nintendo64DD", "Nintendo64DD" },
             { "GameBoy", "GameBoy" },
             { "GameBoyColor", "GameBoyColor" },
             { "GameBoyAdvance", "GameBoyAdvance" },
-            { "SG-1000", "SG-1000" },
-            { "MasterSystem", "MasterSystem" },
             { "GameGear", "GameGear" },
+            { "MasterSystem", "MasterSystem" },
             { "MegaDrive", "MegaDrive" },
             { "Mega32X", "Mega32X" },
             { "MegaCD", "MegaCD" },
             { "MegaCD32X", "MegaCD32X" },
+            { "MSX", "MSX" },
+            { "MSX2", "MSX2" },
+            { "MyVision", "MyVision" },
             { "NeoGeoAES", "NeoGeoAES" },
             { "NeoGeoMVS", "NeoGeoMVS" },
             { "NeoGeoPocket", "NeoGeoPocket" },
             { "NeoGeoPocketColor", "NeoGeoPocketColor" },
+            { "Nintendo64", "Nintendo64" },
+            { "Nintendo64DD", "Nintendo64DD" },
+            { "PCEngine", "PCEngine" },
+            { "PCEngineCD", "PCEngineCD" },
+            { "PocketChallengeV2", "PocketChallengeV2" },
             { "PlayStation", "PlayStation" },
+            { "SG-1000", "SG-1000" },
+            { "SuperGrafx", "SuperGrafx" },
+            { "SuperGrafxCD", "SuperGrafxCD" },
+            { "SuperFamicom", "SuperFamicom" },
+            { "WonderSwan", "WonderSwan" },
+            { "WonderSwanColor", "WonderSwanColor" },
             { "ZXSpectrum", "ZXSpectrum" },
             { "ZXSpectrum128", "ZXSpectrum128" }
         };

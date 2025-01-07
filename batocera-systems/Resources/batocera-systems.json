@@ -439,10 +439,6 @@
       {
         "md5": "0ec5ae5b5a5c4959fa8b43fcf8687f7c",
         "file": "bios/dc/awbios.zip"
-      },
-      {
-        "md5": "0ec5ae5b5a5c4959fa8b43fcf8687f7c",
-        "file": "emulators/flycast/data/awbios.zip"
       }
     ]
   },
@@ -517,6 +513,20 @@
       {
         "md5": "",
         "file": "bios/mame/hash/bbcmc_flop.xml"
+      }
+    ]
+  },
+
+  "casloopy": {
+    "name": "Casio Loopy",
+    "biosFiles": [
+      {
+        "md5": "0e1d8dc0110ecf8201c0cef11ef4a858",
+        "file": "bios/casloopy.zip"
+      },
+      {
+        "md5": "",
+        "file": "bios/mame/hash/casloopy.xml"
       }
     ]
   },
@@ -649,18 +659,40 @@
       {
         "md5": "",
         "file": "bios/dc/dc.zip"
-      },
+      }
+    ]
+  },
+
+  "electron": {
+    "name": "Acorn Electron",
+    "biosFiles": [
       {
-        "md5": "e10c53c2f8b90bab96ead2d368858623",
-        "file": "emulators/flycast/data/dc_boot.bin"
-      },
-      {
-        "md5": "0a93f7940c455905bea6e392dfde92a4",
-        "file": "emulators/flycast/data/dc_flash.bin"
+        "md5": "",
+        "file": "bios/electron.zip"
       },
       {
         "md5": "",
-        "file": "emulators/flycast/data/dc.zip"
+        "file": "bios/electron_plus1.zip"
+      },
+      {
+        "md5": "",
+        "file": "bios/electron_plus3.zip"
+      },
+      {
+        "md5": "",
+        "file": "bios/electron64.zip"
+      },
+      {
+        "md5": "",
+        "file": "bios/mame/hash/electron_cass.xml"
+      },
+      {
+        "md5": "",
+        "file": "bios/mame/hash/electron_cart.xml"
+      },
+      {
+        "md5": "",
+        "file": "bios/mame/hash/electron_flop.xml"
       }
     ]
   },
@@ -1193,10 +1225,6 @@
       {
         "md5": "eb4099aeb42ef089cfe94f8fe95e51f6",
         "file": "bios/dc/naomi.zip"
-      },
-      {
-        "md5": "eb4099aeb42ef089cfe94f8fe95e51f6",
-        "file": "emulators/flycast/data/naomi.zip"
       }
     ]
   },
@@ -1207,10 +1235,6 @@
       {
         "md5": "",
         "file": "bios/dc/naomi2.zip"
-      },
-      {
-        "md5": "",
-        "file": "emulators/flycast/data/naomi2.zip"
       }
     ]
   },
@@ -1441,7 +1465,7 @@
     ]
   },
 
-    "pcenginecd": {
+  "pcenginecd": {
     "name": "PC Engine CD",
     "biosFiles": [
       {
@@ -1461,6 +1485,20 @@
       {
         "md5": "",
         "file": "bios/fx-scsi.rom"
+      }
+    ]
+  },
+
+  "pegasus": {
+    "name": "Aamber Pegasus",
+    "biosFiles": [
+      {
+        "md5": "fee37d8140e4fab48aac4fdab2847f7d",
+        "file": "bios/pegasus.zip"
+      },
+      {
+        "md5": "",
+        "file": "bios/mame/hash/pegasus_cart.xml"
       }
     ]
   },
@@ -1489,7 +1527,7 @@
     "name": "PSX",
     "biosFiles": [
       {
-        "md5": " c53ca5908936d412331790f4426c6c33",
+        "md5": "c53ca5908936d412331790f4426c6c33",
         "file": "bios/psxonpsp660.bin"
       }
     ]
@@ -1707,6 +1745,16 @@
       {
         "md5": "",
         "file": "bios/mame/hash/tutor.xml"
+      }
+    ]
+  },
+
+  "vc4000": {
+    "name": "VC4000",
+    "biosFiles": [
+      {
+        "md5": "",
+        "file": "bios/mame/hash/vc4000.xml"
       }
     ]
   },

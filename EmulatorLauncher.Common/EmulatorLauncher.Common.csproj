@@ -42,6 +42,11 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\SharpDX.dll</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="SharpDX.DirectInput">
       <HintPath>..\SharpDX.DirectInput.dll</HintPath>
     </Reference>
@@ -75,11 +80,13 @@
     <Compile Include="FileFormats\ConfigFile.cs" />
     <Compile Include="FileFormats\DynamicJson.cs" />
     <Compile Include="FileFormats\IniFile.cs" />
+    <Compile Include="FileFormats\IniFileJGenesis.cs" />
     <Compile Include="FileFormats\IsoFile.cs" />
     <Compile Include="FileFormats\JsonSerializer.cs" />
     <Compile Include="FileFormats\MultiDiskImageFile.cs" />
     <Compile Include="FileFormats\SimpleBml.cs" />
     <Compile Include="FileFormats\SimpleYml.cs" />
+    <Compile Include="FileFormats\StringEncryption.cs" />
     <Compile Include="FileFormats\XmlDeserializer.cs" />
     <Compile Include="FileFormats\XmlExtensions.cs" />
     <Compile Include="FileTools.cs" />
@@ -93,9 +100,11 @@
     <Compile Include="Joysticks\HidGameDevice.cs" />
     <Compile Include="Joysticks\HidToDirectInput.cs" />
     <Compile Include="Joysticks\InputDevices.cs" />
+    <Compile Include="Joysticks\SdlDllControllersMapping.cs" />
     <Compile Include="Joysticks\SdlGameController.cs" />
     <Compile Include="Joysticks\SdlJoystickGuid.cs" />
     <Compile Include="Joysticks\SdlToDirectInput.cs" />
+    <Compile Include="Joysticks\SpecialControllers.cs" />
     <Compile Include="Joysticks\VidPid.cs" />
     <Compile Include="Joysticks\WinmmJoystick.cs" />
     <Compile Include="Joysticks\XInputDevice.cs" />

@@ -9,7 +9,6 @@ namespace EmulatorLauncher
 {
     partial class MagicEngineGenerator : Generator
     {
-        private BezelFiles _bezelFileInfo;
         private ScreenResolution _resolution;
         private bool _fullscreen;
 
@@ -28,8 +27,10 @@ namespace EmulatorLauncher
 
             _fullscreen = !IsEmulationStationWindowed() || SystemConfig.getOptBoolean("forcefullscreen");
 
-            var commandArray = new List<string>();
-            commandArray.Add("\"" + rom + "\"");
+            var commandArray = new List<string>
+            {
+                "\"" + rom + "\""
+            };
 
             string args = string.Join(" ", commandArray);
 
@@ -40,7 +41,7 @@ namespace EmulatorLauncher
 
             //Applying bezels
             if (_fullscreen && SystemConfig["magicengine_renderer"] != "0")
-                ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x86, system, rom, path, resolution);
+                ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x86, system, rom, path, resolution, emulator);
 
             return new ProcessStartInfo()
             {
@@ -90,7 +91,7 @@ namespace EmulatorLauncher
                     BindIniFeature(ini, "video", "screen_ratio", "magicengine_ratio", "1,1");
                     ini.WriteValue("setup", "desktop", "n");
                     BindIniFeature(ini, "video", "vsync", "magicengine_vsync", "0,1");
-                    BindIniFeature(ini, "video", "frameskip", "magicengine_frameskip", "0");
+                    BindIniFeatureSlider(ini, "video", "frameskip", "magicengine_frameskip", "0");
                     ini.WriteValue("video", "fullscreen", _fullscreen ? "0,1" : "0,0");
                     BindBoolIniFeature(ini, "video", "high_res", "magicengine_hires", "0,1", "0,0");
                     BindBoolIniFeature(ini, "video", "filter", "smooth", "0,1", "0,0");
@@ -110,16 +111,17 @@ namespace EmulatorLauncher
         {
             FakeBezelFrm bezel = null;
 
-            if (_bezelFileInfo != null)
-                bezel = _bezelFileInfo.ShowFakeBezel(_resolution);
-
             int ret = base.RunAndWait(path);
 
-            if (bezel != null)
-                bezel.Dispose();
+            bezel?.Dispose();
 
             if (ret == 1)
+            {
+                ReshadeManager.UninstallReshader(ReshadeBezelType.opengl, path.WorkingDirectory);
                 return 0;
+            }
+
+            ReshadeManager.UninstallReshader(ReshadeBezelType.opengl, path.WorkingDirectory);
 
             return ret;
         }

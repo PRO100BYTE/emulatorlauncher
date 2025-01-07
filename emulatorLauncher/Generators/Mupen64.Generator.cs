@@ -18,7 +18,7 @@ namespace EmulatorLauncher
         private ScreenResolution _resolution;
 
         private SaveStatesWatcher _saveStatesWatcher;
-
+        
         public override void Cleanup()
         {
             if (_saveStatesWatcher != null)
@@ -32,6 +32,8 @@ namespace EmulatorLauncher
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
         {
+            SimpleLogger.Instance.Info("[Generator] Getting " + emulator + " path and executable name.");
+
             string path = AppConfig.GetFullPath("mupen64");
             if (!Directory.Exists(path))
                 return null;
@@ -39,6 +41,10 @@ namespace EmulatorLauncher
             string exe = Path.Combine(path, "RMG.exe");
             if (!File.Exists(exe))
                 return null;
+
+            string portableFile = Path.Combine(path, "portable.txt");
+            if (!File.Exists(portableFile))
+                File.WriteAllText(portableFile, "");
 
             bool fullscreen = !IsEmulationStationWindowed() || SystemConfig.getOptBoolean("forcefullscreen");
 
@@ -58,11 +64,14 @@ namespace EmulatorLauncher
             commandArray.Add("-q");
 
             //Applying bezels
-            if (SystemConfig.isOptSet("ratio") && SystemConfig["ratio"] != "1")
+            if (SystemConfig.isOptSet("ratio") && SystemConfig["ratio"] != "1" && SystemConfig["ratio"] != "3")
                 SystemConfig["forceNoBezel"] = "1";
 
-            if (!ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x64, system, rom, path, resolution))
-                _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution);
+            if (fullscreen)
+            {
+                if (!ReshadeManager.Setup(ReshadeBezelType.opengl, ReshadePlatform.x64, system, rom, path, resolution, emulator))
+                    _bezelFileInfo = BezelFiles.GetBezelFiles(system, rom, resolution, emulator);
+            }
 
             _resolution = resolution;
 
@@ -86,9 +95,10 @@ namespace EmulatorLauncher
                 {
                     commandArray.Add("--disk");
                     commandArray.Add("\"" + rom + "\"");
+                    commandArray.Add("\"" + n64rom + "\"");
                 }
-
-                commandArray.Add("\"" + n64rom + "\"");
+                else
+                    commandArray.Add("\"" + rom + "\"");
             }
 
             else
@@ -155,8 +165,18 @@ namespace EmulatorLauncher
 
                 // Default settings                
                 ini.WriteValue("Rosalie's Mupen GUI", "HideCursorInFullscreenEmulation", "True");
-                ini.WriteValue("Rosalie's Mupen GUI", "PauseEmulationOnFocusLoss", "True");
-                ini.WriteValue("Rosalie's Mupen GUI", "ResumeEmulationOnFocus", "True");
+
+                if (SystemConfig.isOptSet("mupen64_pause_on_focus_lost") && SystemConfig.getOptBoolean("mupen64_pause_on_focus_lost"))
+                {
+                    ini.WriteValue("Rosalie's Mupen GUI", "PauseEmulationOnFocusLoss", "True");
+                    ini.WriteValue("Rosalie's Mupen GUI", "ResumeEmulationOnFocus", "True");
+                }
+                else
+                {
+                    ini.WriteValue("Rosalie's Mupen GUI", "PauseEmulationOnFocusLoss", "False");
+                    ini.WriteValue("Rosalie's Mupen GUI", "ResumeEmulationOnFocus", "False");
+                }
+                
                 ini.WriteValue("Rosalie's Mupen GUI", "AutomaticFullscreen", fullscreen ? "True" : "False");
                 ini.WriteValue("Rosalie's Mupen GUI", "ShowVerboseLogMessages", "False");
                 ini.WriteValue("Rosalie's Mupen GUI", "CheckForUpdates", "False");
@@ -210,7 +230,7 @@ namespace EmulatorLauncher
                         ini.WriteValue("Video-Parallel", "VSync", "1");
 
                     // Widescreen
-                    if (SystemConfig.isOptSet("ratio") && (SystemConfig["ratio"] == "2" || SystemConfig["ratio"] == "0"))
+                    if (SystemConfig.isOptSet("ratio") && (SystemConfig["ratio"] == "2" || SystemConfig["ratio"] == "0" || SystemConfig["ratio"] == "4"))
                         ini.WriteValue("Video-Parallel", "WidescreenStretch", "True");
                     else
                         ini.WriteValue("Video-Parallel", "WidescreenStretch", "False");
@@ -229,7 +249,7 @@ namespace EmulatorLauncher
                     // Resolution
                     if (SystemConfig.isOptSet("resolution") && !string.IsNullOrEmpty(SystemConfig["resolution"]))
                     {
-                        var res = SystemConfig["resolution"];
+                        var res = SystemConfig["resolution"].ToIntegerString();
 
                         switch (res)
                         {
@@ -275,7 +295,7 @@ namespace EmulatorLauncher
                     }
 
                     // Widescreen
-                    if (SystemConfig.isOptSet("ratio") && (SystemConfig["ratio"] == "2" || SystemConfig["ratio"] == "0"))
+                    if (SystemConfig.isOptSet("ratio") && (SystemConfig["ratio"] == "2" || SystemConfig["ratio"] == "0" || SystemConfig["ratio"] == "4"))
                         ini.WriteValue("Video-AngrylionPlus", "ViWidescreen", "True");
                     else
                         ini.WriteValue("Video-AngrylionPlus", "ViWidescreen", "False");
@@ -346,13 +366,13 @@ namespace EmulatorLauncher
 
                 // Anisotropic filtering
                 if (SystemConfig.isOptSet("anisotropic_filtering") && !string.IsNullOrEmpty(SystemConfig["anisotropic_filtering"]))
-                    ini.WriteValue("User", "texture\\anisotropy", SystemConfig["anisotropic_filtering"]);
+                    ini.WriteValue("User", "texture\\anisotropy", SystemConfig["anisotropic_filtering"].ToIntegerString());
                 else
                     ini.WriteValue("User", "texture\\anisotropy", "0");
 
                 // Resolution
                 if (SystemConfig.isOptSet("resolution") && !string.IsNullOrEmpty(SystemConfig["resolution"]))
-                    ini.WriteValue("User", "frameBufferEmulation\\nativeResFactor", SystemConfig["resolution"]);
+                    ini.WriteValue("User", "frameBufferEmulation\\nativeResFactor", SystemConfig["resolution"].ToIntegerString());
                 else
                     ini.WriteValue("User", "frameBufferEmulation\\nativeResFactor", "0");
 
@@ -376,8 +396,9 @@ namespace EmulatorLauncher
 
             int ret = base.RunAndWait(path);
 
-            if (bezel != null)
-                bezel.Dispose();
+            bezel?.Dispose();
+
+            ReshadeManager.UninstallReshader(ReshadeBezelType.opengl, path.WorkingDirectory);
 
             return ret;
         }

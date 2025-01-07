@@ -32,7 +32,7 @@ namespace EmulatorLauncher
             if (disks.Count == 0)
                 return null;
 
-            winUAEConfigureIni(path, rom, system);
+            WinUAEConfigureIni(path, system);
             string fn = WriteGameUaeFile(system, path, rom, disks);
 
             return new ProcessStartInfo()
@@ -102,7 +102,7 @@ namespace EmulatorLauncher
             return disks;
         }
 
-        private void winUAEConfigureIni(string path, string rom, string system)
+        private void WinUAEConfigureIni(string path, string system)
         {
             string settingsFile = Path.Combine(path, "winuae.ini");
 
@@ -130,7 +130,7 @@ namespace EmulatorLauncher
 
         private void WriteKickstartRom(StringBuilder sb, string system)
         {
-            string bios = Path.Combine(AppConfig.GetFullPath("bios"), "kick40068.A1200");
+            string bios;
 
             if (SystemConfig.isOptSet("a500_machine") && SystemConfig["a500_machine"] == "amiga500+")
             {
@@ -229,9 +229,9 @@ namespace EmulatorLauncher
             sb.AppendLine("gfx_filter_aspect_ratio=16:9");
             sb.AppendLine("gfx_colour_mode=32bit");
 
-            if (SystemConfig.isOptSet("vsync") && !string.IsNullOrEmpty(SystemConfig["vsync"]))
+            if (SystemConfig.isOptSet("vsync") && !SystemConfig.getOptBoolean("vsync"))
             {
-                sb.AppendLine("gfx_vsync=" + SystemConfig["vsync"]);
+                sb.AppendLine("gfx_vsync=false");
                 sb.AppendLine("gfx_vsyncmode=normal");
             }
             else if (Features.IsSupported("vsync"))

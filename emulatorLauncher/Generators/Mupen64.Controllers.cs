@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
-using System.IO;
+﻿using System.IO;
 using System.Linq;
+using EmulatorLauncher.Common;
 using EmulatorLauncher.Common.FileFormats;
 using EmulatorLauncher.Common.Joysticks;
 
@@ -12,20 +12,28 @@ namespace EmulatorLauncher
         /// Cf. https://github.com/Rosalie241/RMG/tree/master/Source/RMG-Input/Utilities
         /// </summary>
         /// <param name="mupen64plus.cfg"></param>
-        private void UpdateSdlControllersWithHints()
+        /*private void UpdateSdlControllersWithHints()
         {
             var hints = new List<string>();
 
             SdlGameController.ReloadWithHints(string.Join(",", hints));
             Program.Controllers.ForEach(c => c.ResetSdlController());
-        }
+        }*/
 
         private void CreateControllerConfiguration(IniFile ini)
         {
             if (Program.SystemConfig.isOptSet("disableautocontrollers") && Program.SystemConfig["disableautocontrollers"] == "1")
                 return;
 
+            SimpleLogger.Instance.Info("[INFO] Creating controller configuration for RMG Mupen64");
+
             // UpdateSdlControllersWithHints();     // No hints found in emulator code
+
+            for (int i = 0; i < 4; i++)
+            {
+                string section = "Rosalie's Mupen GUI - Input Plugin Profile " + i;
+                ini.ClearSection(section);
+            }
 
             foreach (var controller in this.Controllers.OrderBy(i => i.PlayerIndex).Take(4))
                 ConfigureInput(controller, ini);
@@ -52,9 +60,22 @@ namespace EmulatorLauncher
                 return;
 
             string devicename = joy.DeviceName;
-            int index = controller.SdlController.Index;
+
+            // override devicename
+            string newNamePath = Path.Combine(Program.AppConfig.GetFullPath("tools"), "controllerinfo.yml");
+            if (File.Exists(newNamePath))
+            {
+                string newName = SdlJoystickGuid.GetNameFromFile(newNamePath, controller.Guid, "mupen64");
+
+                if (newName != null)
+                    devicename = newName;
+            }
+
+            int index = controller.SdlController != null ? controller.SdlController.Index : controller.DeviceIndex;
             bool revertbuttons = controller.VendorID == USB_VENDOR.NINTENDO;
-            bool zAsLeftTrigger = SystemConfig["mupen64_inputprofile" + playerIndex] == "c_face_zl" || SystemConfig["mupen64_inputprofile" + playerIndex] == "c_stick_zl";
+            bool zAsRightTrigger = SystemConfig.isOptSet("mupen64_inputprofile" + playerIndex) && (SystemConfig["mupen64_inputprofile" + playerIndex] == "c_face" || SystemConfig["mupen64_inputprofile" + playerIndex] == "c_stick");
+            bool xboxLayout = SystemConfig.isOptSet("mupen64_inputprofile" + playerIndex) && SystemConfig["mupen64_inputprofile" + playerIndex] == "xbox";
+            string n64guid = controller.Guid.ToLowerInvariant();
 
             string iniSection = "Rosalie's Mupen GUI - Input Plugin Profile " + (playerIndex - 1);
 
@@ -62,24 +83,24 @@ namespace EmulatorLauncher
             string sensitivity = "100";
             string deadzone = "15";
             if (SystemConfig.isOptSet("mupen64_sensitivity") && !string.IsNullOrEmpty(SystemConfig["mupen64_sensitivity"]))
-                sensitivity = SystemConfig["mupen64_sensitivity"];
+                sensitivity = SystemConfig["mupen64_sensitivity"].ToIntegerString();
 
             if (SystemConfig.isOptSet("mupen64_deadzone") && !string.IsNullOrEmpty(SystemConfig["mupen64_deadzone"]))
-                deadzone = SystemConfig["mupen64_deadzone"];
+                deadzone = SystemConfig["mupen64_deadzone"].ToIntegerString();
 
             ini.WriteValue(iniSection, "PluggedIn", "True");
             ini.WriteValue(iniSection, "DeviceName", devicename);
             ini.WriteValue(iniSection, "DeviceNum", index.ToString());
             ini.WriteValue(iniSection, "Deadzone", deadzone);
             ini.WriteValue(iniSection, "Sensitivity", sensitivity);
+            ini.WriteValue(iniSection, "UseProfile", "");
+            ini.WriteValue(iniSection, "GameboyRom", "");
+            ini.WriteValue(iniSection, "GameboySave", "");
 
             if (SystemConfig.isOptSet("mupen64_pak" + playerIndex) && !string.IsNullOrEmpty(SystemConfig["mupen64_pak" + playerIndex]))
                 ini.WriteValue(iniSection, "Pak", SystemConfig["mupen64_pak" + playerIndex]);
             else
                 ini.WriteValue(iniSection, "Pak", "3");
-
-            ini.WriteValue(iniSection, "GameboyRom", "\"" + "\"");
-            ini.WriteValue(iniSection, "GameboySave", "\"" + "\"");
 
             if (SystemConfig["mupen64_pak1"] == "2" && playerIndex == 1)
                 SearchTransferPackFiles(ini, iniSection);
@@ -88,15 +109,70 @@ namespace EmulatorLauncher
             ini.WriteValue(iniSection, "FilterEventsForButtons", "True");
             ini.WriteValue(iniSection, "FilterEventsForAxis", "True");
 
+            // Special mapping for n64 style controllers
+            string n64json = Path.Combine(AppConfig.GetFullPath("retrobat"), "system", "resources", "inputmapping", "n64Controllers.json");
+            bool needActivationSwitch = false;
+            bool n64_pad = Program.SystemConfig.getOptBoolean("n64_pad");
+
+            if (File.Exists(n64json))
+            {
+                try
+                {
+                    var n64Controllers = N64Controller.LoadControllersFromJson(n64json);
+
+                    if (n64Controllers != null)
+                    {
+                        N64Controller n64Gamepad = N64Controller.GetN64Controller("mupen64", n64guid, n64Controllers);
+
+                        if (n64Gamepad != null)
+                        {
+                            if (n64Gamepad.ControllerInfo != null)
+                            {
+                                if (n64Gamepad.ControllerInfo.ContainsKey("needActivationSwitch"))
+                                    needActivationSwitch = n64Gamepad.ControllerInfo["needActivationSwitch"] == "yes";
+
+                                if (needActivationSwitch && !n64_pad)
+                                {
+                                    SimpleLogger.Instance.Info("[Controller] Specific n64 mapping needs to be activated for this controller.");
+                                    goto BypassSPecialControllers;
+                                }
+
+                                if (n64Gamepad.ControllerInfo.ContainsKey("deviceName") && !string.IsNullOrEmpty(n64Gamepad.ControllerInfo["deviceName"]))
+                                    ini.WriteValue(iniSection, "DeviceName", n64Gamepad.ControllerInfo["deviceName"]);
+                            }
+
+                            SimpleLogger.Instance.Info("[Controller] Performing specific mapping for " + n64Gamepad.Name);
+
+                            ConfigureN64Controller(ini, iniSection, n64Gamepad);
+
+                            if (playerIndex == 1)
+                            {
+                                ConfigureHotkeysN64Controllers(ini, iniSection, n64Gamepad);
+                                ConfigureEmptyHotkeys(ini, iniSection);
+                            }
+                            return;
+                        }
+                        else
+                            SimpleLogger.Instance.Info("[Controller] Gamepad not in JSON file.");
+                    }
+                    else
+                        SimpleLogger.Instance.Info("[Controller] Error loading JSON file.");
+                }
+                catch { }
+            }
+
+            BypassSPecialControllers:
+
+            // Default mapping
             if (SystemConfig.isOptSet("mupen64_inputprofile" + playerIndex) && (SystemConfig["mupen64_inputprofile" + playerIndex] == "c_face" || SystemConfig["mupen64_inputprofile" + playerIndex] == "c_face_zl"))
             {
                 ini.WriteValue(iniSection, "A_InputType", "0");
-                ini.WriteValue(iniSection, "A_Name", zAsLeftTrigger ? "rightshoulder" : "leftshoulder");
-                ini.WriteValue(iniSection, "A_Data", zAsLeftTrigger ? "10" : "9");
+                ini.WriteValue(iniSection, "A_Name", zAsRightTrigger ? "leftshoulder" : "rightshoulder");
+                ini.WriteValue(iniSection, "A_Data", zAsRightTrigger ? "9" : "10");
                 ini.WriteValue(iniSection, "A_ExtraData", "0");
                 ini.WriteValue(iniSection, "B_InputType", "1");
-                ini.WriteValue(iniSection, "B_Name", zAsLeftTrigger ? "righttrigger+" : "lefttrigger+");
-                ini.WriteValue(iniSection, "B_Data", zAsLeftTrigger ? "5" : "4");
+                ini.WriteValue(iniSection, "B_Name", zAsRightTrigger ? "lefttrigger+" : "righttrigger+");
+                ini.WriteValue(iniSection, "B_Data", zAsRightTrigger ? "4" : "5");
                 ini.WriteValue(iniSection, "B_ExtraData", "1");
                 ini.WriteValue(iniSection, "Start_InputType", "0");
                 ini.WriteValue(iniSection, "Start_Name", "start");
@@ -142,12 +218,12 @@ namespace EmulatorLauncher
                 ini.WriteValue(iniSection, "LeftTrigger_Data", "4");
                 ini.WriteValue(iniSection, "LeftTrigger_ExtraData", "0");
                 ini.WriteValue(iniSection, "RightTrigger_InputType", "0");
-                ini.WriteValue(iniSection, "RightTrigger_Name", zAsLeftTrigger ? "leftshoulder" : "rightshoulder");
-                ini.WriteValue(iniSection, "RightTrigger_Data", zAsLeftTrigger ? "9" : "10");
+                ini.WriteValue(iniSection, "RightTrigger_Name", zAsRightTrigger ? "rightshoulder" : "leftshoulder");
+                ini.WriteValue(iniSection, "RightTrigger_Data", zAsRightTrigger ? "10" : "9");
                 ini.WriteValue(iniSection, "RightTrigger_ExtraData", "0");
                 ini.WriteValue(iniSection, "ZTrigger_InputType", "1");
-                ini.WriteValue(iniSection, "ZTrigger_Name", zAsLeftTrigger ? "lefttrigger+" : "righttrigger+");
-                ini.WriteValue(iniSection, "ZTrigger_Data", zAsLeftTrigger ? "4" : "5");
+                ini.WriteValue(iniSection, "ZTrigger_Name", zAsRightTrigger ? "righttrigger+" : "lefttrigger+");
+                ini.WriteValue(iniSection, "ZTrigger_Data", zAsRightTrigger ? "5" : "4");
                 ini.WriteValue(iniSection, "ZTrigger_ExtraData", "1");
 
                 ini.WriteValue(iniSection, "AnalogStickUp_InputType", "1");
@@ -170,14 +246,29 @@ namespace EmulatorLauncher
 
             else
             {
-                ini.WriteValue(iniSection, "A_InputType", "0");
-                ini.WriteValue(iniSection, "A_Name", revertbuttons ? "b" : "a");
-                ini.WriteValue(iniSection, "A_Data", revertbuttons ? "1" : "0");
-                ini.WriteValue(iniSection, "A_ExtraData", "0");
-                ini.WriteValue(iniSection, "B_InputType", "0");
-                ini.WriteValue(iniSection, "B_Name", revertbuttons ? "y" : "x");
-                ini.WriteValue(iniSection, "B_Data", revertbuttons ? "3" : "2");
-                ini.WriteValue(iniSection, "B_ExtraData", "0");
+                if (xboxLayout)
+                {
+                    ini.WriteValue(iniSection, "A_InputType", "0");
+                    ini.WriteValue(iniSection, "A_Name", revertbuttons ? "b" : "a");
+                    ini.WriteValue(iniSection, "A_Data", revertbuttons ? "1" : "0");
+                    ini.WriteValue(iniSection, "A_ExtraData", "0");
+                    ini.WriteValue(iniSection, "B_InputType", "0");
+                    ini.WriteValue(iniSection, "B_Name", revertbuttons ? "a" : "b");
+                    ini.WriteValue(iniSection, "B_Data", revertbuttons ? "0" : "1");
+                    ini.WriteValue(iniSection, "B_ExtraData", "0");
+                }
+                else
+                {
+                    ini.WriteValue(iniSection, "A_InputType", "0");
+                    ini.WriteValue(iniSection, "A_Name", revertbuttons ? "b" : "a");
+                    ini.WriteValue(iniSection, "A_Data", revertbuttons ? "1" : "0");
+                    ini.WriteValue(iniSection, "A_ExtraData", "0");
+                    ini.WriteValue(iniSection, "B_InputType", "0");
+                    ini.WriteValue(iniSection, "B_Name", revertbuttons ? "y" : "x");
+                    ini.WriteValue(iniSection, "B_Data", revertbuttons ? "3" : "2");
+                    ini.WriteValue(iniSection, "B_ExtraData", "0");
+                }
+
                 ini.WriteValue(iniSection, "Start_InputType", "0");
                 ini.WriteValue(iniSection, "Start_Name", "start");
                 ini.WriteValue(iniSection, "Start_Data", "6");
@@ -226,8 +317,8 @@ namespace EmulatorLauncher
                 ini.WriteValue(iniSection, "RightTrigger_Data", "10");
                 ini.WriteValue(iniSection, "RightTrigger_ExtraData", "0");
                 ini.WriteValue(iniSection, "ZTrigger_InputType", "1");
-                ini.WriteValue(iniSection, "ZTrigger_Name", zAsLeftTrigger ? "lefttrigger+" : "righttrigger+");
-                ini.WriteValue(iniSection, "ZTrigger_Data", zAsLeftTrigger ? "4" : "5");
+                ini.WriteValue(iniSection, "ZTrigger_Name", zAsRightTrigger ? "righttrigger+" : "lefttrigger+");
+                ini.WriteValue(iniSection, "ZTrigger_Data", zAsRightTrigger ? "5" : "4");
                 ini.WriteValue(iniSection, "ZTrigger_ExtraData", "1");
 
                 ini.WriteValue(iniSection, "AnalogStickUp_InputType", "1");
@@ -248,32 +339,21 @@ namespace EmulatorLauncher
                 ini.WriteValue(iniSection, "AnalogStickRight_ExtraData", "1");
             }
 
-            ini.WriteValue(iniSection, "UseProfile", "");
-            ini.WriteValue(iniSection, "GameboyRom", "");
-            ini.WriteValue(iniSection, "GameboySave", "");
-
             if (playerIndex == 1)
-                ConfigureHotkeys(controller, ini, iniSection);
+            {
+                ConfigureHotkeys(ini, iniSection);
+                ConfigureEmptyHotkeys(ini, iniSection);
+            }
+
+            SimpleLogger.Instance.Info("[INFO] Assigned controller " + controller.DevicePath + " to player : " + controller.PlayerIndex.ToString());
         }
 
-        private void ConfigureHotkeys(Controller controller, IniFile ini, string iniSection)
+        private void ConfigureHotkeys(IniFile ini, string iniSection)
         {
-            ini.WriteValue(iniSection, "Hotkey_Shutdown_InputType", "");
-            ini.WriteValue(iniSection, "Hotkey_Shutdown_Name", "");
-            ini.WriteValue(iniSection, "Hotkey_Shutdown_Data", "");
-            ini.WriteValue(iniSection, "Hotkey_Shutdown_ExtraData", "");
             ini.WriteValue(iniSection, "Hotkey_Exit_InputType", "0;0");
             ini.WriteValue(iniSection, "Hotkey_Exit_Name", "back;start");
             ini.WriteValue(iniSection, "Hotkey_Exit_Data", "4;6");
             ini.WriteValue(iniSection, "Hotkey_Exit_ExtraData", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_SoftReset_InputType", "");
-            ini.WriteValue(iniSection, "Hotkey_SoftReset_Name", "");
-            ini.WriteValue(iniSection, "Hotkey_SoftReset_Data", "");
-            ini.WriteValue(iniSection, "Hotkey_SoftReset_ExtraData", "");
-            ini.WriteValue(iniSection, "Hotkey_HardReset_InputType", "");
-            ini.WriteValue(iniSection, "Hotkey_HardReset_Name", "");
-            ini.WriteValue(iniSection, "Hotkey_HardReset_Data", "");
-            ini.WriteValue(iniSection, "Hotkey_HardReset_ExtraData", "");
             ini.WriteValue(iniSection, "Hotkey_Resume_InputType", "0;0");
             ini.WriteValue(iniSection, "Hotkey_Resume_Name", "back;b");
             ini.WriteValue(iniSection, "Hotkey_Resume_Data", "4;1");
@@ -282,6 +362,42 @@ namespace EmulatorLauncher
             ini.WriteValue(iniSection, "Hotkey_Screenshot_Name", "back;rightstick");
             ini.WriteValue(iniSection, "Hotkey_Screenshot_Data", "4;8");
             ini.WriteValue(iniSection, "Hotkey_Screenshot_ExtraData", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_InputType", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_Name", "back;dpleft");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_Data", "4;13");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_ExtraData", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_InputType", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_Name", "back;dpup");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_Data", "4;11");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_ExtraData", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_InputType", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_Name", "back;dpright");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_Data", "4;14");
+            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_ExtraData", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SaveState_InputType", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_SaveState_Name", "back;x");
+            ini.WriteValue(iniSection, "Hotkey_SaveState_Data", "4;2");
+            ini.WriteValue(iniSection, "Hotkey_SaveState_ExtraData", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_LoadState_InputType", "0;0");
+            ini.WriteValue(iniSection, "Hotkey_LoadState_Name", "back;y");
+            ini.WriteValue(iniSection, "Hotkey_LoadState_Data", "4;3");
+            ini.WriteValue(iniSection, "Hotkey_LoadState_ExtraData", "0;0");
+        }
+
+        private void ConfigureEmptyHotkeys(IniFile ini, string iniSection)
+        {
+            ini.WriteValue(iniSection, "Hotkey_Shutdown_InputType", "");
+            ini.WriteValue(iniSection, "Hotkey_Shutdown_Name", "");
+            ini.WriteValue(iniSection, "Hotkey_Shutdown_Data", "");
+            ini.WriteValue(iniSection, "Hotkey_Shutdown_ExtraData", "");
+            ini.WriteValue(iniSection, "Hotkey_SoftReset_InputType", "");
+            ini.WriteValue(iniSection, "Hotkey_SoftReset_Name", "");
+            ini.WriteValue(iniSection, "Hotkey_SoftReset_Data", "");
+            ini.WriteValue(iniSection, "Hotkey_SoftReset_ExtraData", "");
+            ini.WriteValue(iniSection, "Hotkey_HardReset_InputType", "");
+            ini.WriteValue(iniSection, "Hotkey_HardReset_Name", "");
+            ini.WriteValue(iniSection, "Hotkey_HardReset_Data", "");
+            ini.WriteValue(iniSection, "Hotkey_HardReset_ExtraData", "");
             ini.WriteValue(iniSection, "Hotkey_LimitFPS_InputType", "");
             ini.WriteValue(iniSection, "Hotkey_LimitFPS_Name", "");
             ini.WriteValue(iniSection, "Hotkey_LimitFPS_Data", "");
@@ -290,18 +406,10 @@ namespace EmulatorLauncher
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor25_Name", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor25_Data", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor25_ExtraData", "");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_InputType", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_Name", "back;dpleft");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_Data", "4;13");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor50_ExtraData", "0;0");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor75_InputType", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor75_Name", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor75_Data", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor75_ExtraData", "");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_InputType", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_Name", "back;dpup");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_Data", "4;11");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor100_ExtraData", "0;0");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor125_InputType", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor125_Name", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor125_Data", "");
@@ -322,10 +430,6 @@ namespace EmulatorLauncher
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor225_Name", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor225_Data", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor225_ExtraData", "");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_InputType", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_Name", "back;dpright");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_Data", "4;14");
-            ini.WriteValue(iniSection, "Hotkey_SpeedFactor250_ExtraData", "0;0");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor275_InputType", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor275_Name", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor275_Data", "");
@@ -334,14 +438,6 @@ namespace EmulatorLauncher
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor300_Name", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor300_Data", "");
             ini.WriteValue(iniSection, "Hotkey_SpeedFactor300_ExtraData", "");
-            ini.WriteValue(iniSection, "Hotkey_SaveState_InputType", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_SaveState_Name", "back;x");
-            ini.WriteValue(iniSection, "Hotkey_SaveState_Data", "4;2");
-            ini.WriteValue(iniSection, "Hotkey_SaveState_ExtraData", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_LoadState_InputType", "0;0");
-            ini.WriteValue(iniSection, "Hotkey_LoadState_Name", "back;y");
-            ini.WriteValue(iniSection, "Hotkey_LoadState_Data", "4;3");
-            ini.WriteValue(iniSection, "Hotkey_LoadState_ExtraData", "0;0");
             ini.WriteValue(iniSection, "Hotkey_GSButton_InputType", "");
             ini.WriteValue(iniSection, "Hotkey_GSButton_Name", "");
             ini.WriteValue(iniSection, "Hotkey_GSButton_Data", "");
@@ -434,6 +530,30 @@ namespace EmulatorLauncher
                     }
                 }
             }
+        }
+
+        private void ConfigureN64Controller(IniFile ini, string iniSection, N64Controller n64Gamepad)
+        {
+            if (n64Gamepad.Mapping == null)
+            {
+                SimpleLogger.Instance.Info("[Controller] Missing mapping for N64 controller.");
+                return;
+            }
+
+            foreach (var button in n64Gamepad.Mapping)
+                ini.WriteValue(iniSection, button.Key, button.Value);
+        }
+
+        private void ConfigureHotkeysN64Controllers(IniFile ini, string iniSection, N64Controller n64Gamepad)
+        {
+            if (n64Gamepad.HotKeyMapping == null)
+            {
+                SimpleLogger.Instance.Info("[Controller] Missing mapping for N64 controller hotkeys.");
+                return;
+            }
+
+            foreach (var button in n64Gamepad.HotKeyMapping)
+                ini.WriteValue(iniSection, button.Key, button.Value);
         }
     }
 }

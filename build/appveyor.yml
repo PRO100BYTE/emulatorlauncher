@@ -30,6 +30,7 @@ after_build:
 - 7z a batocera-ports.zip 7za.exe
 - 7z a batocera-ports.zip 7za.dll
 - 7z a batocera-ports.zip 7zxa.dll
+- 7z a batocera-ports.zip Newtonsoft.Json.dll
 - 7z a batocera-ports.zip unzip.exe
 - 7z a batocera-ports.zip unzip32.dll
 - 7z a batocera-ports.zip pdftoppm.exe
@@ -47,8 +48,9 @@ artifacts:
 - path: batocera-ports.zip
 deploy:
 - provider: GitHub
-  tag: continuous
-  release: continuous
+  tag: projectarcade-el
+  release: ProjectArcade emulatorLauncher $(APPVEYOR_BUILD_VERSION)
+  description: #ProjectArcade emulatorLauncher $(APPVEYOR_BUILD_VERSION) ###This release was automatically compiled and published by the AppVeyor service
   auth_token:
-    secure: afMGqkbqCFPGpQOgnu9WZOaMG2l8hCUPeeGQU9JvZYeQGC+1LcfgXjGJF6LIOFrs
+    secure: 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
   force_update: true

@@ -2,10 +2,7 @@
 using System.IO;
 using System.Diagnostics;
 using EmulatorLauncher.Common;
-using System;
-using System.Windows.Forms;
 using System.Threading;
-using System.Windows.Interop;
 
 namespace EmulatorLauncher
 {
@@ -17,8 +14,12 @@ namespace EmulatorLauncher
         }
 
         public override System.Diagnostics.ProcessStartInfo Generate(string system, string emulator, string core, string rom, string playersControllers, ScreenResolution resolution)
-        {            
+        {
+            SimpleLogger.Instance.Info("[Generator] Getting " + emulator + " path and executable name.");
+
             string path = AppConfig.GetFullPath("ArcadeFlashWeb");
+            if (!Directory.Exists(path))
+                return null;
 
             string exe = Path.Combine(path, "ArcadeFlashWeb.exe");
             if (!File.Exists(exe))
@@ -68,8 +69,6 @@ namespace EmulatorLauncher
 
             while (hWnd != focusApp)
             {
-                var name = User32.GetWindowText(focusApp);
-                var name2 = User32.GetWindowText(hWnd);
                 if (process.WaitForExit(50))
                 {
                     process = null;
